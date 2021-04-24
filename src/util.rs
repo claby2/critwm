@@ -1,3 +1,4 @@
+use crate::backend::signal::{Signal, SIGNAL_STACK};
 use std::{
     os::raw::{c_int, c_uint, c_ulong},
     process::{self, Command},
@@ -27,31 +28,22 @@ impl Cursor {
     }
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct Argument {
-    i: Option<isize>,
-    ui: Option<usize>,
-    f: Option<f32>,
-    s: Option<String>,
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub enum Argument {
+    Void,
+    Int(isize),
+    UInt(usize),
+    Float(f32),
+    Str(String),
+    Signal(Signal),
 }
 
-macro_rules! argument_from {
-    ($t:ty, $i:ident) => {
-        impl From<$t> for Argument {
-            fn from(e: $t) -> Self {
-                Self {
-                    $i: Some(e.to_owned()),
-                    ..Default::default()
-                }
-            }
-        }
-    };
+impl From<&str> for Argument {
+    fn from(s: &str) -> Self {
+        Self::Str(s.to_owned())
+    }
 }
-
-argument_from!(&isize, i);
-argument_from!(&usize, ui);
-argument_from!(&f32, f);
-argument_from!(&str, s);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Key {
@@ -93,8 +85,14 @@ macro_rules! keymap {
 }
 
 pub fn spawn(arg: Argument) {
-    if let Some(program) = arg.s {
+    if let Argument::Str(program) = arg {
         Command::new(program).spawn().unwrap();
+    }
+}
+
+pub fn signal(arg: Argument) {
+    if let Argument::Signal(signal) = arg {
+        SIGNAL_STACK.lock().unwrap().push(signal);
     }
 }
 

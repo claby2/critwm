@@ -1,68 +1,15 @@
+mod client;
+pub mod signal;
+
 use crate::{
     config,
     error::{CritError, CritResult},
-    util::{Action, Cursor, Key, XCursor, XCursorShape, XWindowDimension, XWindowPosition},
+    util::{Action, Cursor, Key, XCursor, XCursorShape},
 };
+use client::Client;
+use signal::{Signal, SIGNAL_STACK};
 use std::{cmp, collections::HashMap, mem, ptr};
 use x11_dl::xlib;
-
-#[derive(Debug)]
-struct WindowGeometry {
-    x: XWindowPosition,
-    y: XWindowPosition,
-    width: XWindowDimension,
-    height: XWindowDimension,
-    border_width: XWindowDimension,
-    border_depth: XWindowDimension,
-}
-
-impl WindowGeometry {
-    fn new(xlib: &xlib::Xlib, display: *mut xlib::Display, window: &xlib::Window) -> Self {
-        let mut root: xlib::Window = 0;
-        let mut x: XWindowPosition = 0;
-        let mut y: XWindowPosition = 0;
-        let mut width: XWindowDimension = 0;
-        let mut height: XWindowDimension = 0;
-        let mut border_width: XWindowDimension = 0;
-        let mut border_depth: XWindowDimension = 0;
-        unsafe {
-            (xlib.XGetGeometry)(
-                display,
-                *window,
-                &mut root,
-                &mut x,
-                &mut y,
-                &mut width,
-                &mut height,
-                &mut border_width,
-                &mut border_depth,
-            )
-        };
-        Self {
-            x,
-            y,
-            width,
-            height,
-            border_width,
-            border_depth,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct Client {
-    window_geometry: WindowGeometry,
-    window: xlib::Window,
-}
-
-impl Client {
-    fn new(xlib: &xlib::Xlib, display: *mut xlib::Display, window: xlib::Window) -> Self {
-        Self {
-            window_geometry: WindowGeometry::new(xlib, display, &window),
-            window,
-        }
-    }
-}
 
 pub struct Backend {
     xlib: xlib::Xlib,
@@ -151,7 +98,20 @@ impl Backend {
         grab_button(xlib::Button3Mask);
     }
 
+    pub fn kill_client(&self) {
+        if let Some(client) = self.clients.get(self.current_client) {
+            unsafe { (self.xlib.XKillClient)(self.display, client.window) };
+        }
+    }
+
     pub fn handle_event(&mut self) {
+        // Handle signals.
+        if let Some(signal) = SIGNAL_STACK.lock().unwrap().pop() {
+            match signal {
+                Signal::KillClient => self.kill_client(),
+            }
+        }
+        // Handle events from xlib.
         let mut event: xlib::XEvent = unsafe { mem::zeroed() };
         unsafe { (self.xlib.XNextEvent)(self.display, &mut event) };
         match event.get_type() {
