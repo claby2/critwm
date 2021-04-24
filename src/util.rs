@@ -1,5 +1,5 @@
 use std::{
-    os::raw::{c_uint, c_ulong},
+    os::raw::{c_int, c_uint, c_ulong},
     process::{self, Command},
 };
 
@@ -7,6 +7,8 @@ pub type ModMask = c_uint;
 pub type XKeysym = c_ulong;
 pub type XCursorShape = c_uint;
 pub type XCursor = c_ulong;
+pub type XWindowPosition = c_int;
+pub type XWindowDimension = c_uint;
 
 #[derive(Debug)]
 pub struct Cursor {
