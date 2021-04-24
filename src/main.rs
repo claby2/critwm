@@ -13,6 +13,8 @@ fn run() -> CritResult<()> {
     backend.grab_keys();
     backend.grab_buttons();
     loop {
+        backend.handle_cursor();
+        backend.handle_signal()?;
         backend.handle_event();
     }
 }

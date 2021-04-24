@@ -1,6 +1,6 @@
 use crate::backend::signal::{Signal, SIGNAL_STACK};
 use std::{
-    os::raw::{c_int, c_uint, c_ulong},
+    os::raw::{c_int, c_short, c_uint, c_ulong},
     process::{self, Command},
 };
 
@@ -10,6 +10,7 @@ pub type XCursorShape = c_uint;
 pub type XCursor = c_ulong;
 pub type XWindowPosition = c_int;
 pub type XWindowDimension = c_uint;
+pub type XineramaInfo = c_short;
 
 #[derive(Debug)]
 pub struct Cursor {
@@ -73,13 +74,24 @@ impl Action {
     }
 }
 
+macro_rules! key {
+    ($modifier:expr, $sym:expr) => {
+        Key::new($modifier, $sym as crate::util::XKeysym)
+    };
+}
+
+macro_rules! action {
+    ($function:expr, $argument:expr) => {
+        Action::new($function as fn(crate::util::Argument), $argument)
+    };
+}
+
 macro_rules! keymap {
-    [$($key:expr),+] => {
+    [$(($modifier:expr, $sym:expr, $function:expr, $argument:expr)),+] => {
         {
-            use crate::util::*;
             [
-                $((Key::new($key.0, $key.1 as XKeysym), Action::new($key.2 as fn(Argument), $key.3))),+
-            ].iter().cloned().collect()
+                $((key!($modifier, $sym), action!($function, $argument))),+
+            ].iter().cloned().collect::<HashMap<Key, Action>>()
         }
     }
 }

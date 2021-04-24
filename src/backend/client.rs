@@ -2,11 +2,11 @@ use crate::util::{XWindowDimension, XWindowPosition};
 use x11_dl::xlib;
 
 #[derive(Debug)]
-struct WindowGeometry {
-    x: XWindowPosition,
-    y: XWindowPosition,
-    width: XWindowDimension,
-    height: XWindowDimension,
+pub struct WindowGeometry {
+    pub x: XWindowPosition,
+    pub y: XWindowPosition,
+    pub width: XWindowDimension,
+    pub height: XWindowDimension,
     border_width: XWindowDimension,
     border_depth: XWindowDimension,
 }
@@ -48,13 +48,31 @@ impl WindowGeometry {
 pub struct Client {
     window_geometry: WindowGeometry,
     pub window: xlib::Window,
+    pub monitor: usize,
+    pub workspace: usize,
 }
 
 impl Client {
-    pub fn new(xlib: &xlib::Xlib, display: *mut xlib::Display, window: xlib::Window) -> Self {
+    pub fn new(
+        xlib: &xlib::Xlib,
+        display: *mut xlib::Display,
+        window: xlib::Window,
+        monitor: usize,
+        workspace: usize,
+    ) -> Self {
         Self {
             window_geometry: WindowGeometry::new(xlib, display, &window),
             window,
+            monitor,
+            workspace,
         }
+    }
+
+    pub fn get_geometry(&self) -> &WindowGeometry {
+        &self.window_geometry
+    }
+
+    pub fn update_geometry(&mut self, xlib: &xlib::Xlib, display: *mut xlib::Display) {
+        self.window_geometry = WindowGeometry::new(xlib, display, &self.window);
     }
 }

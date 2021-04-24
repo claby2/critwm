@@ -1,4 +1,5 @@
 mod client;
+mod monitor;
 pub mod signal;
 
 use crate::{
@@ -7,9 +8,10 @@ use crate::{
     util::{Action, Cursor, Key, XCursor, XCursorShape},
 };
 use client::Client;
+use monitor::Monitor;
 use signal::{Signal, SIGNAL_STACK};
-use std::{cmp, collections::HashMap, mem, ptr};
-use x11_dl::xlib;
+use std::{cmp, collections::HashMap, mem, ptr, slice};
+use x11_dl::{xinerama, xlib};
 
 pub struct Backend {
     xlib: xlib::Xlib,
@@ -21,9 +23,14 @@ pub struct Backend {
     key_map: HashMap<Key, Action>,
     clients: Vec<Client>,
     current_client: usize,
+    monitors: Vec<Monitor<{ config::WORKSPACE_COUNT }>>,
+    current_monitor: usize,
 }
 
 impl Backend {
+    const POINTER_BUTTON_MASK: u32 =
+        (xlib::PointerMotionMask | xlib::ButtonPressMask | xlib::ButtonReleaseMask) as u32;
+
     pub fn new() -> CritResult<Self> {
         // Open xlib.
         let xlib = xlib::Xlib::open()?;
@@ -31,7 +38,7 @@ impl Backend {
         // Open display.
         let display = unsafe { (xlib.XOpenDisplay)(ptr::null()) };
         if display.is_null() {
-            return Err(CritError::Other("Display is null".to_owned()));
+            return Err(CritError::Other("Display is null.".to_owned()));
         }
         // Get root window.
         let root = unsafe { (xlib.XDefaultRootWindow)(display) };
@@ -46,7 +53,7 @@ impl Backend {
             create_cursor(Cursor::MOV),
         );
         // Construct backend.
-        let backend = Self {
+        let mut backend = Self {
             xlib,
             display,
             root,
@@ -56,9 +63,11 @@ impl Backend {
             key_map: config::get_keymap(),
             clients: Vec::new(),
             current_client: 0,
+            monitors: Vec::new(),
+            current_monitor: 0,
         };
-        // Set initial cursor.
         backend.set_cursor(backend.cursor.norm);
+        backend.fetch_monitors()?;
         Ok(backend)
     }
 
@@ -87,7 +96,7 @@ impl Backend {
                 config::MODKEY,
                 self.root,
                 0,
-                (xlib::ButtonPressMask | xlib::ButtonReleaseMask | xlib::PointerMotionMask) as u32,
+                Self::POINTER_BUTTON_MASK,
                 xlib::GrabModeAsync,
                 xlib::GrabModeAsync,
                 0,
@@ -104,13 +113,83 @@ impl Backend {
         }
     }
 
-    pub fn handle_event(&mut self) {
+    pub fn handle_signal(&mut self) -> CritResult<()> {
         // Handle signals.
         if let Some(signal) = SIGNAL_STACK.lock().unwrap().pop() {
             match signal {
                 Signal::KillClient => self.kill_client(),
+                Signal::ChangeWorkspace(workspace) => {
+                    // Change workspace of selected monitor to given workspace.
+                    let monitor = &mut self.monitors[self.current_monitor];
+                    // TODO: Clean this up.
+                    if monitor.get_current_workspace() != workspace {
+                        // Unmap windows that are in the old workspace.
+                        for client in &self.clients {
+                            if client.monitor == self.current_monitor
+                                && client.workspace == monitor.get_current_workspace()
+                            {
+                                unsafe { (self.xlib.XUnmapWindow)(self.display, client.window) };
+                            }
+                        }
+                        // Update workspace value to new value.
+                        monitor.set_current_workspace(workspace)?;
+                        // Map windows that are in the new workspace.
+                        for client in &self.clients {
+                            if client.monitor == self.current_monitor
+                                && client.workspace == monitor.get_current_workspace()
+                            {
+                                unsafe { (self.xlib.XMapWindow)(self.display, client.window) };
+                            }
+                        }
+                    }
+                }
+                Signal::MoveToWorkspace(workspace) => {
+                    // Move currently focused client to given workspace.
+                    let mut client = &mut self.clients[self.current_client];
+                    if client.workspace != workspace {
+                        client.workspace = workspace;
+                        // Hide window as it has moved to another workspace.
+                        unsafe { (self.xlib.XUnmapWindow)(self.display, client.window) };
+                    }
+                }
             }
         }
+        Ok(())
+    }
+
+    pub fn handle_cursor(&mut self) {
+        // Handle cursor position.
+        let (mut x, mut y) = (0, 0);
+        let mut dummy: xlib::Window = 0;
+        let mut dummy_x = 0;
+        let mut dummy_y = 0;
+        let mut dummy_mask = 0;
+        unsafe {
+            (self.xlib.XQueryPointer)(
+                self.display,
+                self.root,
+                &mut dummy,
+                &mut dummy,
+                &mut x,
+                &mut y,
+                &mut dummy_x,
+                &mut dummy_y,
+                &mut dummy_mask,
+            );
+        };
+        let (x, y) = (x as u32, y as u32);
+        if !self.monitors[self.current_monitor].has_point(x, y) {
+            for (i, monitor) in self.monitors.iter().enumerate() {
+                if monitor.has_point(x, y) {
+                    // Change monitor.
+                    self.current_monitor = i;
+                    break;
+                }
+            }
+        }
+    }
+
+    pub fn handle_event(&mut self) {
         // Handle events from xlib.
         let mut event: xlib::XEvent = unsafe { mem::zeroed() };
         unsafe { (self.xlib.XNextEvent)(self.display, &mut event) };
@@ -135,34 +214,36 @@ impl Backend {
                 };
                 self.start = unsafe { event.button };
             }
-            xlib::MotionNotify if self.start.subwindow != 0 => {
-                let xdiff = unsafe { event.button.x_root - self.start.x_root };
-                let ydiff = unsafe { event.button.y_root - self.start.y_root };
-                match self.start.button {
-                    xlib::Button1 => {
-                        self.set_cursor(self.cursor.mov);
-                        unsafe {
-                            (self.xlib.XMoveWindow)(
-                                self.display,
-                                self.start.subwindow,
-                                self.attrs.x + xdiff,
-                                self.attrs.y + ydiff,
-                            );
+            xlib::MotionNotify => {
+                if self.start.subwindow != 0 {
+                    let xdiff = unsafe { event.button.x_root - self.start.x_root };
+                    let ydiff = unsafe { event.button.y_root - self.start.y_root };
+                    let diff: Option<(i32, i32, i32, i32)> = match self.start.button {
+                        xlib::Button1 => {
+                            self.set_cursor(self.cursor.mov);
+                            Some((xdiff, ydiff, 0, 0))
+                        }
+                        xlib::Button3 => {
+                            self.set_cursor(self.cursor.res);
+                            Some((0, 0, xdiff, ydiff))
+                        }
+                        _ => None,
+                    };
+                    if let Some((dx, dy, dw, dh)) = diff {
+                        for (i, client) in self.clients.iter().enumerate() {
+                            if client.window == self.start.subwindow {
+                                self.move_resize(
+                                    i,
+                                    self.attrs.x + dx,
+                                    self.attrs.y + dy,
+                                    (self.attrs.width + dw) as u32,
+                                    (self.attrs.height + dh) as u32,
+                                );
+                                break;
+                            }
                         }
                     }
-                    xlib::Button3 => {
-                        self.set_cursor(self.cursor.res);
-                        unsafe {
-                            (self.xlib.XResizeWindow)(
-                                self.display,
-                                self.start.subwindow,
-                                (self.attrs.width + xdiff) as u32,
-                                (self.attrs.height + ydiff) as u32,
-                            );
-                        }
-                    }
-                    _ => {}
-                };
+                }
             }
             xlib::ButtonRelease => {
                 self.set_cursor(self.cursor.norm);
@@ -208,9 +289,16 @@ impl Backend {
                     );
                     (self.xlib.XMapWindow)(self.display, window);
                 };
-                self.clients
-                    .push(Client::new(&self.xlib, self.display, window));
-                self.set_focus(Some(self.clients.len() - 1));
+                self.clients.push(Client::new(
+                    &self.xlib,
+                    self.display,
+                    window,
+                    self.current_monitor,
+                    self.monitors[self.current_monitor].get_current_workspace(),
+                ));
+                let index = self.clients.len() - 1;
+                self.set_focus(Some(index));
+                self.set_client_monitor(index);
             }
             xlib::EnterNotify => {
                 // Pointer has entered a new window.
@@ -246,6 +334,24 @@ impl Backend {
         unsafe { (self.xlib.XDefineCursor)(self.display, self.root, cursor) };
     }
 
+    fn move_resize(&mut self, index: usize, x: i32, y: i32, width: u32, height: u32) {
+        let client = &mut self.clients[index];
+        unsafe { (self.xlib.XMoveResizeWindow)(self.display, client.window, x, y, width, height) };
+        self.set_client_monitor(index);
+    }
+
+    fn set_client_monitor(&mut self, index: usize) {
+        let client = &mut self.clients[index];
+        client.update_geometry(&self.xlib, self.display);
+        let geometry = client.get_geometry();
+        for (i, monitor) in self.monitors.iter().enumerate() {
+            if monitor.has_window(&geometry) {
+                client.monitor = i;
+                break;
+            }
+        }
+    }
+
     fn set_focus(&mut self, index: Option<usize>) {
         if let Some(index) = index {
             // If given Some(index), change the current client index.
@@ -259,6 +365,20 @@ impl Backend {
                 xlib::CurrentTime,
             )
         };
+    }
+
+    fn fetch_monitors(&mut self) -> CritResult<()> {
+        let xlib = xinerama::Xlib::open()?;
+        if unsafe { (xlib.XineramaIsActive)(self.display) } > 0 {
+            let mut screen_count = 0;
+            let raw_infos = unsafe { (xlib.XineramaQueryScreens)(self.display, &mut screen_count) };
+            let xinerama_infos: &[xinerama::XineramaScreenInfo] =
+                unsafe { slice::from_raw_parts(raw_infos, screen_count as usize) };
+            self.monitors = xinerama_infos.iter().map(Monitor::from).collect();
+            Ok(())
+        } else {
+            Err(CritError::Other("Xinerama is not active.".to_owned()))
+        }
     }
 
     extern "C" fn xerror(_: *mut xlib::Display, e: *mut xlib::XErrorEvent) -> i32 {

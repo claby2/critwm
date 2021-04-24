@@ -4,6 +4,8 @@ use std::sync::{Arc, Mutex};
 #[derive(Debug, Clone)]
 pub enum Signal {
     KillClient,
+    ChangeWorkspace(usize),
+    MoveToWorkspace(usize),
 }
 
 lazy_static! {
