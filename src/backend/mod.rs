@@ -1,5 +1,6 @@
 mod atom;
 mod client;
+mod hints;
 mod monitor;
 pub mod signal;
 
@@ -72,6 +73,7 @@ impl Backend {
             monitors: Vec::new(),
             current_monitor: 0,
         };
+        backend.set_hints();
         backend.set_cursor(backend.cursor.norm);
         backend.fetch_monitors()?;
         Ok(backend)

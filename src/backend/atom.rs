@@ -5,6 +5,8 @@ use x11_dl::xlib;
 pub struct Atom {
     pub wm_protocols: xlib::Atom,
     pub wm_delete: xlib::Atom,
+    pub net_wm_name: xlib::Atom,
+    pub net_supporting_wm_check: xlib::Atom,
 }
 
 impl Atom {
@@ -12,6 +14,8 @@ impl Atom {
         Self {
             wm_protocols: Self::get_atom(xlib, display, "WM_PROTOCOLS"),
             wm_delete: Self::get_atom(xlib, display, "WM_DELETE_WINDOW"),
+            net_wm_name: Self::get_atom(xlib, display, "_NET_WM_NAME"),
+            net_supporting_wm_check: Self::get_atom(xlib, display, "_NET_SUPPORTING_WM_CHECK"),
         }
     }
 
