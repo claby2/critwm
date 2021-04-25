@@ -243,32 +243,37 @@ impl Backend {
             }
             xlib::MotionNotify => {
                 if self.start.subwindow != 0 {
-                    let xdiff = unsafe { event.button.x_root - self.start.x_root };
-                    let ydiff = unsafe { event.button.y_root - self.start.y_root };
-                    let diff: Option<(i32, i32, i32, i32)> = match self.start.button {
+                    // Compress motion notify events.
+                    while unsafe {
+                        (self.xlib.XCheckTypedEvent)(self.display, xlib::MotionNotify, &mut event)
+                    } > 0
+                    {}
+                    let diff = || unsafe {
+                        (
+                            event.button.x_root - self.start.x_root,
+                            event.button.y_root - self.start.y_root,
+                        )
+                    };
+                    match self.start.button {
                         xlib::Button1 => {
                             self.set_cursor(self.cursor.mov);
-                            Some((xdiff, ydiff, 0, 0))
+                            let (dx, dy) = diff();
+                            self.move_client(
+                                self.current_client,
+                                self.attrs.x + dx,
+                                self.attrs.y + dy,
+                            );
                         }
                         xlib::Button3 => {
                             self.set_cursor(self.cursor.res);
-                            Some((0, 0, xdiff, ydiff))
+                            let (dw, dh) = diff();
+                            self.resize_client(
+                                self.current_client,
+                                (self.attrs.width + dw) as u32,
+                                (self.attrs.height + dh) as u32,
+                            );
                         }
-                        _ => None,
-                    };
-                    if let Some((dx, dy, dw, dh)) = diff {
-                        for (i, client) in self.clients.iter().enumerate() {
-                            if client.window == self.start.subwindow {
-                                self.move_resize(
-                                    i,
-                                    self.attrs.x + dx,
-                                    self.attrs.y + dy,
-                                    (self.attrs.width + dw) as u32,
-                                    (self.attrs.height + dh) as u32,
-                                );
-                                break;
-                            }
-                        }
+                        _ => {}
                     }
                 }
             }
@@ -361,9 +366,15 @@ impl Backend {
         unsafe { (self.xlib.XDefineCursor)(self.display, self.root, cursor) };
     }
 
-    fn move_resize(&mut self, index: usize, x: i32, y: i32, width: u32, height: u32) {
-        let client = &mut self.clients[index];
-        unsafe { (self.xlib.XMoveResizeWindow)(self.display, client.window, x, y, width, height) };
+    fn move_client(&mut self, index: usize, x: i32, y: i32) {
+        unsafe { (self.xlib.XMoveWindow)(self.display, self.clients[index].window, x, y) };
+        self.set_client_monitor(index);
+    }
+
+    fn resize_client(&mut self, index: usize, width: u32, height: u32) {
+        unsafe {
+            (self.xlib.XResizeWindow)(self.display, self.clients[index].window, width, height)
+        };
         self.set_client_monitor(index);
     }
 
