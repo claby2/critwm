@@ -1,3 +1,4 @@
+mod atom;
 mod client;
 mod monitor;
 pub mod signal;
@@ -7,6 +8,7 @@ use crate::{
     error::{CritError, CritResult},
     util::{Action, Cursor, Key, XCursor, XCursorShape},
 };
+use atom::Atom;
 use client::Client;
 use monitor::Monitor;
 use signal::{Signal, SIGNAL_STACK};
@@ -19,6 +21,7 @@ pub struct Backend {
     root: xlib::Window,
     start: xlib::XButtonEvent,
     attrs: xlib::XWindowAttributes,
+    atoms: Atom,
     cursor: Cursor,
     key_map: HashMap<Key, Action>,
     clients: Vec<Client>,
@@ -43,6 +46,8 @@ impl Backend {
         // Get root window.
         let root = unsafe { (xlib.XDefaultRootWindow)(display) };
         unsafe { (xlib.XSelectInput)(display, root, xlib::SubstructureRedirectMask) };
+        // Create atoms.
+        let atoms = Atom::new(&xlib, display);
         // Create cursors.
         let create_cursor = |shape: XCursorShape| -> XCursor {
             unsafe { (xlib.XCreateFontCursor)(display, shape) }
@@ -59,6 +64,7 @@ impl Backend {
             root,
             start: unsafe { mem::zeroed() },
             attrs: unsafe { mem::zeroed() },
+            atoms,
             cursor,
             key_map: config::get_keymap(),
             clients: Vec::new(),
@@ -109,7 +115,19 @@ impl Backend {
 
     pub fn kill_client(&self) {
         if let Some(client) = self.clients.get(self.current_client) {
-            unsafe { (self.xlib.XKillClient)(self.display, client.window) };
+            // Try kill the client nicely.
+            if !self.send_xevent_atom(client.window, self.atoms.wm_delete) {
+                // Force kill the client.
+                unsafe {
+                    (self.xlib.XGrabServer)(self.display);
+                    (self.xlib.XSetErrorHandler)(Some(Self::xerror_dummy));
+                    (self.xlib.XSetCloseDownMode)(self.display, xlib::DestroyAll);
+                    (self.xlib.XKillClient)(self.display, client.window);
+                    (self.xlib.XSync)(self.display, xlib::False);
+                    (self.xlib.XSetErrorHandler)(Some(Self::xerror));
+                    (self.xlib.XUngrabServer)(self.display);
+                }
+            }
         }
     }
 
@@ -160,26 +178,33 @@ impl Backend {
     pub fn handle_cursor(&mut self) {
         // Handle cursor position.
         let (mut x, mut y) = (0, 0);
-        let mut dummy: xlib::Window = 0;
-        let mut dummy_x = 0;
-        let mut dummy_y = 0;
-        let mut dummy_mask = 0;
+        let mut window: xlib::Window = 0;
+        let mut root_x = 0;
+        let mut root_y = 0;
+        let mut mask = 0;
         unsafe {
             (self.xlib.XQueryPointer)(
                 self.display,
                 self.root,
-                &mut dummy,
-                &mut dummy,
+                &mut window,
+                &mut window,
                 &mut x,
                 &mut y,
-                &mut dummy_x,
-                &mut dummy_y,
-                &mut dummy_mask,
+                &mut root_x,
+                &mut root_y,
+                &mut mask,
             );
         };
         let (x, y) = (x as u32, y as u32);
+        // If the current monitor does not contain the cursor position, find the monitor which has it.
         if !self.monitors[self.current_monitor].has_point(x, y) {
-            for (i, monitor) in self.monitors.iter().enumerate() {
+            // While interating, skip over checking the current monitor.
+            for (i, monitor) in self
+                .monitors
+                .iter()
+                .enumerate()
+                .filter(|&(i, _)| i != self.current_monitor)
+            {
                 if monitor.has_point(x, y) {
                     // Change monitor.
                     self.current_monitor = i;
@@ -381,6 +406,31 @@ impl Backend {
         }
     }
 
+    fn send_xevent_atom(&self, window: xlib::Window, atom: xlib::Atom) -> bool {
+        let mut array: *mut xlib::Atom = unsafe { std::mem::zeroed() };
+        let mut length = unsafe { std::mem::zeroed() };
+        let mut exists = false;
+        if unsafe { (self.xlib.XGetWMProtocols)(self.display, window, &mut array, &mut length) } > 0
+        {
+            let protocols: &[xlib::Atom] = unsafe { slice::from_raw_parts(array, length as usize) };
+            exists = protocols.contains(&atom);
+        }
+        if exists {
+            let mut message: xlib::XClientMessageEvent = unsafe { std::mem::zeroed() };
+            message.type_ = xlib::ClientMessage;
+            message.window = window;
+            message.message_type = self.atoms.wm_protocols;
+            message.format = 32;
+            message.data.set_long(0, atom as i64);
+            message.data.set_long(1, xlib::CurrentTime as i64);
+            let mut event: xlib::XEvent = message.into();
+            unsafe {
+                (self.xlib.XSendEvent)(self.display, window, 0, xlib::NoEventMask, &mut event)
+            };
+        }
+        exists
+    }
+
     extern "C" fn xerror(_: *mut xlib::Display, e: *mut xlib::XErrorEvent) -> i32 {
         let err = unsafe { *e };
         // Ignore BadWindow error code.
@@ -389,5 +439,9 @@ impl Backend {
         } else {
             1
         }
+    }
+
+    extern "C" fn xerror_dummy(_: *mut xlib::Display, _: *mut xlib::XErrorEvent) -> i32 {
+        0
     }
 }
