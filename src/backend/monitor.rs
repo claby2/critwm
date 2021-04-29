@@ -8,10 +8,10 @@ use x11_dl::xinerama;
 #[derive(Debug)]
 pub struct Monitor<const WORKSPACES: usize> {
     current_workspace: usize,
-    x: XineramaInfo,
-    y: XineramaInfo,
-    width: XineramaInfo,
-    height: XineramaInfo,
+    pub x: XineramaInfo,
+    pub y: XineramaInfo,
+    pub width: XineramaInfo,
+    pub height: XineramaInfo,
 }
 
 impl<const WORKSPACES: usize> From<&xinerama::XineramaScreenInfo> for Monitor<WORKSPACES> {

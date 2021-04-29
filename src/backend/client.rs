@@ -1,13 +1,13 @@
 use crate::util::{XWindowDimension, XWindowPosition};
 use x11_dl::xlib;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WindowGeometry {
     pub x: XWindowPosition,
     pub y: XWindowPosition,
     pub width: XWindowDimension,
     pub height: XWindowDimension,
-    border_width: XWindowDimension,
+    pub border_width: XWindowDimension,
     border_depth: XWindowDimension,
 }
 
@@ -44,12 +44,15 @@ impl WindowGeometry {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Client {
-    window_geometry: WindowGeometry,
+    geometry: WindowGeometry,
+    // old_geometry stores the geometry of the window before fullscreen was toggled.
+    old_geometry: WindowGeometry,
     pub window: xlib::Window,
     pub monitor: usize,
     pub workspace: usize,
+    pub fullscreen: bool,
 }
 
 impl Client {
@@ -60,19 +63,34 @@ impl Client {
         monitor: usize,
         workspace: usize,
     ) -> Self {
+        let geometry = WindowGeometry::new(xlib, display, &window);
         Self {
-            window_geometry: WindowGeometry::new(xlib, display, &window),
+            geometry: geometry.clone(),
+            old_geometry: geometry,
             window,
             monitor,
             workspace,
+            fullscreen: false,
         }
     }
 
     pub fn get_geometry(&self) -> &WindowGeometry {
-        &self.window_geometry
+        &self.geometry
+    }
+
+    pub fn get_old_geometry(&self) -> &WindowGeometry {
+        &self.old_geometry
     }
 
     pub fn update_geometry(&mut self, xlib: &xlib::Xlib, display: *mut xlib::Display) {
-        self.window_geometry = WindowGeometry::new(xlib, display, &self.window);
+        self.geometry = WindowGeometry::new(xlib, display, &self.window);
+    }
+
+    pub fn toggle_fullscreen(&mut self) {
+        if !self.fullscreen {
+            // Cache geometry if client is being toggled to fullscreen.
+            self.old_geometry = self.geometry.clone();
+        }
+        self.fullscreen = !self.fullscreen;
     }
 }

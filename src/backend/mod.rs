@@ -46,7 +46,13 @@ impl Backend {
         }
         // Get root window.
         let root = unsafe { (xlib.XDefaultRootWindow)(display) };
-        unsafe { (xlib.XSelectInput)(display, root, xlib::SubstructureRedirectMask) };
+        unsafe {
+            (xlib.XSelectInput)(
+                display,
+                root,
+                xlib::SubstructureRedirectMask | xlib::StructureNotifyMask,
+            )
+        };
         // Create atoms.
         let atoms = Atom::new(&xlib, display);
         // Create cursors.
@@ -216,7 +222,7 @@ impl Backend {
         }
     }
 
-    pub fn handle_event(&mut self) {
+    pub fn handle_event(&mut self) -> CritResult<()> {
         // Handle events from xlib.
         let mut event: xlib::XEvent = unsafe { mem::zeroed() };
         unsafe { (self.xlib.XNextEvent)(self.display, &mut event) };
@@ -283,23 +289,62 @@ impl Backend {
             }
             xlib::ConfigureRequest => {
                 let request = unsafe { event.configure_request };
-                let mut changes = xlib::XWindowChanges {
-                    x: request.x,
-                    y: request.y,
-                    width: request.width,
-                    height: request.height,
-                    border_width: request.border_width,
-                    sibling: request.above,
-                    stack_mode: request.detail,
-                };
-                unsafe {
-                    (self.xlib.XConfigureWindow)(
-                        self.display,
-                        request.window,
-                        request.value_mask as u32,
-                        &mut changes,
-                    )
-                };
+                if let Some(client) = self
+                    .clients
+                    .iter()
+                    .find(|client| client.window == request.window)
+                {
+                    let geometry = client.get_geometry();
+                    let mut configure_event: xlib::XEvent =
+                        xlib::XConfigureEvent::into(xlib::XConfigureEvent {
+                            type_: xlib::ConfigureNotify,
+                            serial: 0,
+                            send_event: 0,
+                            display: self.display,
+                            event: request.window,
+                            window: request.window,
+                            x: geometry.x,
+                            y: geometry.y,
+                            width: geometry.width as i32,
+                            height: geometry.height as i32,
+                            border_width: geometry.border_width as i32,
+                            above: 0,
+                            override_redirect: 0,
+                        });
+                    unsafe {
+                        (self.xlib.XSendEvent)(
+                            self.display,
+                            request.window,
+                            xlib::False,
+                            xlib::StructureNotifyMask,
+                            &mut configure_event,
+                        )
+                    };
+                } else {
+                    let mut changes = xlib::XWindowChanges {
+                        x: request.x,
+                        y: request.y,
+                        width: request.width,
+                        height: request.height,
+                        border_width: request.border_width,
+                        sibling: request.above,
+                        stack_mode: request.detail,
+                    };
+                    unsafe {
+                        (self.xlib.XConfigureWindow)(
+                            self.display,
+                            request.window,
+                            request.value_mask as u32,
+                            &mut changes,
+                        )
+                    };
+                }
+            }
+            xlib::ConfigureNotify => {
+                if unsafe { event.configure.window } == self.root {
+                    // Root has notified configure.
+                    self.fetch_monitors()?;
+                }
             }
             xlib::MappingNotify => {
                 let mut mapping = unsafe { event.mapping };
@@ -317,7 +362,9 @@ impl Backend {
                     (self.xlib.XSelectInput)(
                         self.display,
                         window,
-                        xlib::StructureNotifyMask | xlib::EnterWindowMask,
+                        xlib::StructureNotifyMask
+                            | xlib::EnterWindowMask
+                            | xlib::PropertyChangeMask,
                     );
                     (self.xlib.XMapWindow)(self.display, window);
                 };
@@ -358,12 +405,56 @@ impl Backend {
                     }
                 }
             }
+            xlib::ClientMessage => {
+                let client_message = unsafe { event.client_message };
+                if client_message.message_type == self.atoms.net_wm_state {
+                    let data = client_message.data;
+                    if data.get_long(1) == self.atoms.net_wm_state_fullscreen as i64
+                        || data.get_long(2) == self.atoms.net_wm_state_fullscreen as i64
+                    {
+                        if let Some(index) = self
+                            .clients
+                            .iter()
+                            .position(|client| client.window == client_message.window)
+                        {
+                            self.toggle_fullscreen(index);
+                        }
+                    }
+                }
+            }
+            xlib::PropertyNotify => {
+                if unsafe { event.property.atom } == self.atoms.net_wm_window_type {
+                    if let Some(state) = self.get_atom_prop(
+                        self.clients[self.current_client].window,
+                        self.atoms.net_wm_state,
+                    ) {
+                        if state == self.atoms.net_wm_state_fullscreen {
+                            self.toggle_fullscreen(self.current_client);
+                        }
+                    }
+                }
+            }
             _ => {}
         }
+        Ok(())
     }
 
     fn set_cursor(&self, cursor: XCursor) {
         unsafe { (self.xlib.XDefineCursor)(self.display, self.root, cursor) };
+    }
+
+    fn move_resize_client(&mut self, index: usize, x: i32, y: i32, width: u32, height: u32) {
+        unsafe {
+            (self.xlib.XMoveResizeWindow)(
+                self.display,
+                self.clients[index].window,
+                x,
+                y,
+                width,
+                height,
+            )
+        };
+        self.set_client_monitor(index);
     }
 
     fn move_client(&mut self, index: usize, x: i32, y: i32) {
@@ -403,6 +494,39 @@ impl Backend {
                 xlib::CurrentTime,
             )
         };
+    }
+
+    fn toggle_fullscreen(&mut self, index: usize) {
+        // Toggle client fullscreen state.
+        self.clients[index].toggle_fullscreen();
+        if self.clients[index].fullscreen {
+            // Make client fullscreen.
+            self.set_window_state(
+                self.clients[index].window,
+                self.atoms.net_wm_state_fullscreen,
+            );
+            self.move_resize_client(
+                index,
+                self.monitors[self.current_monitor].x as i32,
+                self.monitors[self.current_monitor].y as i32,
+                self.monitors[self.current_monitor].width as u32,
+                self.monitors[self.current_monitor].height as u32,
+            );
+            unsafe { (self.xlib.XRaiseWindow)(self.display, self.clients[index].window) };
+        } else {
+            // Get client out of fullscreen.
+            self.set_window_state(self.clients[index].window, 0);
+            let client = self.clients[index].clone();
+            let old_geometry = client.get_old_geometry();
+            // Restore old geometry.
+            self.move_resize_client(
+                index,
+                old_geometry.x,
+                old_geometry.y,
+                old_geometry.width,
+                old_geometry.height,
+            );
+        }
     }
 
     fn fetch_monitors(&mut self) -> CritResult<()> {
