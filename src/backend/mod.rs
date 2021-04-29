@@ -144,29 +144,29 @@ impl Backend {
         if let Some(signal) = SIGNAL_STACK.lock().unwrap().pop() {
             match signal {
                 Signal::KillClient => self.kill_client(),
-                Signal::ChangeWorkspace(workspace) => {
+                Signal::ChangeWorkspace(new_workspace) => {
                     // Change workspace of selected monitor to given workspace.
-                    let monitor = &mut self.monitors[self.current_monitor];
-                    // TODO: Clean this up.
-                    if monitor.get_current_workspace() != workspace {
+                    let monitor = &self.monitors[self.current_monitor];
+                    let is_visible = |workspace: usize, client: &Client| -> bool {
+                        client.monitor == self.current_monitor && client.workspace == workspace
+                    };
+                    if monitor.get_current_workspace() != new_workspace {
                         // Unmap windows that are in the old workspace.
-                        for client in &self.clients {
-                            if client.monitor == self.current_monitor
-                                && client.workspace == monitor.get_current_workspace()
-                            {
+                        self.clients
+                            .iter()
+                            .filter(|client| is_visible(monitor.get_current_workspace(), client))
+                            .for_each(|client| {
                                 unsafe { (self.xlib.XUnmapWindow)(self.display, client.window) };
-                            }
-                        }
-                        // Update workspace value to new value.
-                        monitor.set_current_workspace(workspace)?;
+                            });
                         // Map windows that are in the new workspace.
-                        for client in &self.clients {
-                            if client.monitor == self.current_monitor
-                                && client.workspace == monitor.get_current_workspace()
-                            {
+                        self.clients
+                            .iter()
+                            .filter(|client| is_visible(new_workspace, client))
+                            .for_each(|client| {
                                 unsafe { (self.xlib.XMapWindow)(self.display, client.window) };
-                            }
-                        }
+                            });
+                        // Update workspace value to new value.
+                        self.monitors[self.current_monitor].set_current_workspace(new_workspace)?;
                     }
                 }
                 Signal::MoveToWorkspace(workspace) => {
@@ -344,6 +344,10 @@ impl Backend {
                 if unsafe { event.configure.window } == self.root {
                     // Root has notified configure.
                     self.fetch_monitors()?;
+                    // Update client monitors.
+                    for i in 0..self.clients.len() {
+                        self.set_client_monitor(i);
+                    }
                 }
             }
             xlib::MappingNotify => {
