@@ -50,7 +50,9 @@ impl Backend {
             (xlib.XSelectInput)(
                 display,
                 root,
-                xlib::SubstructureRedirectMask | xlib::StructureNotifyMask,
+                xlib::SubstructureRedirectMask
+                    | xlib::StructureNotifyMask
+                    | xlib::PointerMotionMask,
             )
         };
         // Create atoms.
@@ -183,45 +185,6 @@ impl Backend {
         Ok(())
     }
 
-    pub fn handle_cursor(&mut self) {
-        // Handle cursor position.
-        let (mut x, mut y) = (0, 0);
-        let mut window: xlib::Window = 0;
-        let mut root_x = 0;
-        let mut root_y = 0;
-        let mut mask = 0;
-        unsafe {
-            (self.xlib.XQueryPointer)(
-                self.display,
-                self.root,
-                &mut window,
-                &mut window,
-                &mut x,
-                &mut y,
-                &mut root_x,
-                &mut root_y,
-                &mut mask,
-            );
-        };
-        let (x, y) = (x as u32, y as u32);
-        // If the current monitor does not contain the cursor position, find the monitor which has it.
-        if !self.monitors[self.current_monitor].has_point(x, y) {
-            // While interating, skip over checking the current monitor.
-            for (i, monitor) in self
-                .monitors
-                .iter()
-                .enumerate()
-                .filter(|&(i, _)| i != self.current_monitor)
-            {
-                if monitor.has_point(x, y) {
-                    // Change monitor.
-                    self.current_monitor = i;
-                    break;
-                }
-            }
-        }
-    }
-
     pub fn handle_event(&mut self) -> CritResult<()> {
         // Handle events from xlib.
         let mut event: xlib::XEvent = unsafe { mem::zeroed() };
@@ -280,6 +243,34 @@ impl Backend {
                             );
                         }
                         _ => {}
+                    }
+                }
+                // Handle monitor switching case.
+                if unsafe { event.motion.window } == self.root {
+                    // If the current monitor does not contain the cursor position, find the monitor which has it.
+                    let (x, y) =
+                        unsafe { (event.button.x_root as u32, event.button.y_root as u32) };
+                    if !self.monitors[self.current_monitor].has_point(x, y) {
+                        // While iterating, skip over checking the current monitor.
+                        if let Some(monitor_index) =
+                            self.monitors.iter().enumerate().position(|(i, monitor)| {
+                                i != self.current_monitor && monitor.has_point(x, y)
+                            })
+                        {
+                            self.current_monitor = monitor_index;
+                            // Ensure that subwindow is 0.
+                            if unsafe { event.motion.subwindow } == 0 {
+                                // Cursor has entered a new monitor but is not over any clients.
+                                // Find a client to focus on.
+                                if let Some(client_index) = self
+                                    .clients
+                                    .iter()
+                                    .position(|client| client.monitor == monitor_index)
+                                {
+                                    self.set_focus(Some(client_index));
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -381,31 +372,45 @@ impl Backend {
                 ));
                 let index = self.clients.len() - 1;
                 self.set_focus(Some(index));
-                self.set_client_monitor(index);
+                // Ensure that client is created in the position of the current monitor.
+                self.move_client(
+                    index,
+                    self.monitors[self.current_monitor].x as i32,
+                    self.monitors[self.current_monitor].y as i32,
+                );
+            }
+            xlib::UnmapNotify => {
+                let unmap_event = unsafe { event.unmap };
+                if unmap_event.window == self.start.subwindow {
+                    self.set_cursor(self.cursor.norm);
+                    self.start.subwindow = 0;
+                }
             }
             xlib::EnterNotify => {
                 // Pointer has entered a new window.
                 // Iterate through all clients to find this window and focus it.
-                for (i, client) in self.clients.iter().enumerate() {
-                    if client.window == unsafe { event.crossing.window } {
-                        self.set_focus(Some(i));
-                        break;
-                    }
+                if let Some(client_index) = self
+                    .clients
+                    .iter()
+                    .position(|client| client.window == unsafe { event.crossing.window })
+                {
+                    self.set_focus(Some(client_index));
                 }
             }
             xlib::DestroyNotify => {
                 // Get the window that should be destroyed.
-                for (i, client) in self.clients.iter().enumerate() {
-                    if client.window == unsafe { event.destroy_window.window } {
-                        // Remove destroyed client.
-                        self.clients.remove(i);
-                        if i > 0 {
-                            // Adjust client index and ensure it is not out of bounds.
-                            self.current_client = cmp::min(self.clients.len() - 1, i);
-                            // Set focus to current client.
-                            self.set_focus(None);
-                        }
-                        break;
+                if let Some(client_index) = self
+                    .clients
+                    .iter()
+                    .position(|client| client.window == unsafe { event.destroy_window.window })
+                {
+                    // Remove destroyed client.
+                    self.clients.remove(client_index);
+                    if client_index > 0 {
+                        // Adjust client index and ensure it is not out of bounds.
+                        self.current_client = cmp::min(self.clients.len() - 1, client_index);
+                        // Set focus to current client.
+                        self.set_focus(None);
                     }
                 }
             }
@@ -474,14 +479,16 @@ impl Backend {
     }
 
     fn set_client_monitor(&mut self, index: usize) {
+        // Ensure that the client's monitor is correct.
         let client = &mut self.clients[index];
         client.update_geometry(&self.xlib, self.display);
         let geometry = client.get_geometry();
-        for (i, monitor) in self.monitors.iter().enumerate() {
-            if monitor.has_window(&geometry) {
-                client.monitor = i;
-                break;
-            }
+        if let Some(monitor_index) = self
+            .monitors
+            .iter()
+            .position(|monitor| monitor.has_window(&geometry))
+        {
+            client.monitor = monitor_index;
         }
     }
 
