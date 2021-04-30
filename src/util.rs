@@ -1,7 +1,7 @@
 use crate::backend::signal::{Signal, SIGNAL_STACK};
 use std::{
     os::raw::{c_int, c_short, c_uint, c_ulong},
-    process::{self, Command},
+    process::Command,
 };
 
 pub type ModMask = c_uint;
@@ -29,23 +29,6 @@ impl Cursor {
     }
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub enum Argument {
-    Void,
-    Int(isize),
-    UInt(usize),
-    Float(f32),
-    Str(String),
-    Signal(Signal),
-}
-
-impl From<&str> for Argument {
-    fn from(s: &str) -> Self {
-        Self::Str(s.to_owned())
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Key {
     pub modifier: ModMask,
@@ -58,56 +41,21 @@ impl Key {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Action {
-    function: fn(Argument),
-    argument: Argument,
-}
-
-impl Action {
-    pub fn new(function: fn(Argument), argument: Argument) -> Self {
-        Self { function, argument }
-    }
-
-    pub fn run(&self) {
-        (self.function)(self.argument.clone());
-    }
-}
+pub type Action = Box<dyn Fn()>;
 
 macro_rules! key {
-    ($modifier:expr, $sym:expr) => {
-        Key::new($modifier, $sym as crate::util::XKeysym)
+    ($modifier:expr, $sym:expr, $action:expr) => {
+        (
+            Key::new($modifier, $sym as crate::util::XKeysym),
+            Box::new(move || $action),
+        )
     };
 }
 
-macro_rules! action {
-    ($function:expr, $argument:expr) => {
-        Action::new($function as fn(crate::util::Argument), $argument)
-    };
+pub fn spawn(program: &str) {
+    Command::new(program).spawn().unwrap();
 }
 
-macro_rules! keymap {
-    [$(($modifier:expr, $sym:expr, $function:expr, $argument:expr)),+] => {
-        {
-            [
-                $((key!($modifier, $sym), action!($function, $argument))),+
-            ].iter().cloned().collect::<HashMap<Key, Action>>()
-        }
-    }
-}
-
-pub fn spawn(arg: Argument) {
-    if let Argument::Str(program) = arg {
-        Command::new(program).spawn().unwrap();
-    }
-}
-
-pub fn signal(arg: Argument) {
-    if let Argument::Signal(signal) = arg {
-        SIGNAL_STACK.lock().unwrap().push(signal);
-    }
-}
-
-pub fn quit(_: Argument) {
-    process::exit(0);
+pub fn signal(signal: Signal) {
+    SIGNAL_STACK.lock().unwrap().push(signal);
 }

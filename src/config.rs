@@ -1,8 +1,8 @@
 use crate::{
     backend::signal::Signal,
-    util::{self, Action, Argument, Key, ModMask},
+    util::{self, Action, Key, ModMask},
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, process};
 use x11_dl::{keysym::*, xlib::*};
 
 pub const WORKSPACE_COUNT: usize = 9;
@@ -12,26 +12,25 @@ const TAG_KEYS: [u32; WORKSPACE_COUNT] = [XK_1, XK_2, XK_3, XK_4, XK_5, XK_6, XK
 const TERMINAL: &str = "st";
 
 pub fn get_keymap() -> HashMap<Key, Action> {
-    let mut keymap = keymap![
-        (MODKEY, XK_space, util::spawn, Argument::from("dmenu_run")),
-        (MODKEY, XK_Return, util::spawn, Argument::from(TERMINAL)),
-        (
-            MODKEY,
-            XK_w,
-            util::signal,
-            Argument::Signal(Signal::KillClient)
-        ),
-        (MODKEY | ShiftMask, XK_q, util::quit, Argument::Void)
+    let mut keymap: Vec<(Key, Action)> = vec![
+        key!(MODKEY, XK_space, util::spawn("dmenu_run")),
+        key!(MODKEY, XK_Return, util::spawn(TERMINAL)),
+        key!(MODKEY, XK_w, util::signal(Signal::KillClient)),
+        key!(MODKEY | ShiftMask, XK_q, process::exit(0)),
     ];
     for (i, tag_key) in TAG_KEYS.iter().enumerate() {
-        keymap.insert(
-            key!(MODKEY, *tag_key),
-            action!(util::signal, Argument::Signal(Signal::ChangeWorkspace(i))),
-        );
-        keymap.insert(
-            key!(MODKEY | ShiftMask, *tag_key),
-            action!(util::signal, Argument::Signal(Signal::MoveToWorkspace(i))),
-        );
+        // Add workspace changing binds.
+        keymap.push(key!(
+            MODKEY,
+            *tag_key,
+            util::signal(Signal::ChangeWorkspace(i))
+        ));
+        // Add workspace moving binds.
+        keymap.push(key!(
+            MODKEY | ShiftMask,
+            *tag_key,
+            util::signal(Signal::MoveToWorkspace(i))
+        ));
     }
-    keymap
+    keymap.into_iter().collect::<HashMap<Key, Action>>()
 }

@@ -233,7 +233,7 @@ impl Backend {
                     (self.xlib.XKeycodeToKeysym)(self.display, key_event.keycode as u8, 0)
                 };
                 if let Some(action) = self.key_map.get(&Key::new(key_event.state, keysym)) {
-                    action.run();
+                    (action)();
                 }
             }
             xlib::ButtonPress if unsafe { event.button.subwindow != 0 } => {
