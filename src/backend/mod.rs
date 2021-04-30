@@ -406,9 +406,10 @@ impl Backend {
                 {
                     // Remove destroyed client.
                     self.clients.remove(client_index);
-                    if client_index > 0 {
-                        // Adjust client index and ensure it is not out of bounds.
-                        self.current_client = cmp::min(self.clients.len() - 1, client_index);
+                    // Adjust client index and ensure it is not out of bounds.
+                    self.current_client =
+                        cmp::max(cmp::min(self.clients.len() - 1, client_index), 0);
+                    if self.clients.len() > 0 {
                         // Set focus to current client.
                         self.set_focus(None);
                     }
