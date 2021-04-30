@@ -3,6 +3,7 @@ mod util;
 mod backend;
 mod config;
 mod error;
+mod layouts;
 
 use backend::Backend;
 use error::CritResult;

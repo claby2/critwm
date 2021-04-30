@@ -1,17 +1,18 @@
 mod atom;
-mod client;
+pub mod client;
 mod hints;
-mod monitor;
+pub mod monitor;
 pub mod signal;
 
 use crate::{
     config,
     error::{CritError, CritResult},
+    layouts::Layout,
     util::{Action, Cursor, Key, XCursor, XCursorShape},
 };
 use atom::Atom;
 use client::Client;
-use monitor::Monitor;
+use monitor::{Monitor, MonitorManager};
 use signal::{Signal, SIGNAL_STACK};
 use std::{cmp, collections::HashMap, mem, ptr, slice};
 use x11_dl::{xinerama, xlib};
@@ -27,7 +28,8 @@ pub struct Backend {
     key_map: HashMap<Key, Action>,
     clients: Vec<Client>,
     current_client: usize,
-    monitors: Vec<Monitor<{ config::WORKSPACE_COUNT }>>,
+    monitors: MonitorManager,
+    layouts: Vec<(String, Box<Layout>)>,
     current_monitor: usize,
 }
 
@@ -78,7 +80,8 @@ impl Backend {
             key_map: config::get_keymap(),
             clients: Vec::new(),
             current_client: 0,
-            monitors: Vec::new(),
+            monitors: MonitorManager::new(),
+            layouts: config::get_layouts(),
             current_monitor: 0,
         };
         backend.set_hints();
@@ -149,21 +152,20 @@ impl Backend {
                 Signal::ChangeWorkspace(new_workspace) => {
                     // Change workspace of selected monitor to given workspace.
                     let monitor = &self.monitors[self.current_monitor];
-                    let is_visible = |workspace: usize, client: &Client| -> bool {
-                        client.monitor == self.current_monitor && client.workspace == workspace
-                    };
                     if monitor.get_current_workspace() != new_workspace {
                         // Unmap windows that are in the old workspace.
                         self.clients
                             .iter()
-                            .filter(|client| is_visible(monitor.get_current_workspace(), client))
+                            .filter(|client| {
+                                self.is_visible(monitor.get_current_workspace(), client)
+                            })
                             .for_each(|client| {
                                 unsafe { (self.xlib.XUnmapWindow)(self.display, client.window) };
                             });
                         // Map windows that are in the new workspace.
                         self.clients
                             .iter()
-                            .filter(|client| is_visible(new_workspace, client))
+                            .filter(|client| self.is_visible(new_workspace, client))
                             .for_each(|client| {
                                 unsafe { (self.xlib.XMapWindow)(self.display, client.window) };
                             });
@@ -372,12 +374,8 @@ impl Backend {
                 ));
                 let index = self.clients.len() - 1;
                 self.set_focus(Some(index));
-                // Ensure that client is created in the position of the current monitor.
-                self.move_client(
-                    index,
-                    self.monitors[self.current_monitor].x as i32,
-                    self.monitors[self.current_monitor].y as i32,
-                );
+                // Configure layout.
+                self.arrange();
             }
             xlib::UnmapNotify => {
                 let unmap_event = unsafe { event.unmap };
@@ -409,10 +407,11 @@ impl Backend {
                     // Adjust client index and ensure it is not out of bounds.
                     self.current_client =
                         cmp::max(cmp::min(self.clients.len() - 1, client_index), 0);
-                    if self.clients.len() > 0 {
+                    if !self.clients.is_empty() {
                         // Set focus to current client.
                         self.set_focus(None);
                     }
+                    self.arrange();
                 }
             }
             xlib::ClientMessage => {
@@ -449,8 +448,34 @@ impl Backend {
         Ok(())
     }
 
+    // Return if client is visible in given workspace
+    fn is_visible(&self, workspace: usize, client: &Client) -> bool {
+        client.monitor == self.current_monitor && client.workspace == workspace
+    }
+
     fn set_cursor(&self, cursor: XCursor) {
         unsafe { (self.xlib.XDefineCursor)(self.display, self.root, cursor) };
+    }
+
+    fn arrange(&mut self) {
+        let layout = self.monitors[self.current_monitor].get_layout();
+        for (index, geometry) in layout(
+            self.current_monitor,
+            self.monitors[self.current_monitor].get_current_workspace(),
+            self.monitors[self.current_monitor].get_geometry(),
+            &self.clients,
+        )
+        .iter()
+        .enumerate()
+        {
+            self.move_resize_client(
+                index,
+                geometry.x,
+                geometry.y,
+                geometry.width,
+                geometry.height,
+            )
+        }
     }
 
     fn move_resize_client(&mut self, index: usize, x: i32, y: i32, width: u32, height: u32) {
@@ -490,6 +515,7 @@ impl Backend {
             .position(|monitor| monitor.has_window(&geometry))
         {
             client.monitor = monitor_index;
+            client.workspace = self.monitors[monitor_index].get_current_workspace();
         }
     }
 
@@ -519,10 +545,10 @@ impl Backend {
             );
             self.move_resize_client(
                 index,
-                self.monitors[self.current_monitor].x as i32,
-                self.monitors[self.current_monitor].y as i32,
-                self.monitors[self.current_monitor].width as u32,
-                self.monitors[self.current_monitor].height as u32,
+                self.monitors[self.current_monitor].get_x() as i32,
+                self.monitors[self.current_monitor].get_y() as i32,
+                self.monitors[self.current_monitor].get_width() as u32,
+                self.monitors[self.current_monitor].get_height() as u32,
             );
             unsafe { (self.xlib.XRaiseWindow)(self.display, self.clients[index].window) };
         } else {
@@ -548,7 +574,10 @@ impl Backend {
             let raw_infos = unsafe { (xlib.XineramaQueryScreens)(self.display, &mut screen_count) };
             let xinerama_infos: &[xinerama::XineramaScreenInfo] =
                 unsafe { slice::from_raw_parts(raw_infos, screen_count as usize) };
-            self.monitors = xinerama_infos.iter().map(Monitor::from).collect();
+            self.monitors = xinerama_infos
+                .iter()
+                .map(|info| Monitor::new(&self.layouts[0].1, &info))
+                .collect();
             Ok(())
         } else {
             Err(CritError::Other("Xinerama is not active.".to_owned()))

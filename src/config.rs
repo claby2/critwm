@@ -1,5 +1,6 @@
 use crate::{
     backend::signal::Signal,
+    layouts::{self, Layout},
     util::{self, Action, Key, ModMask},
 };
 use std::{collections::HashMap, process};
@@ -7,8 +8,9 @@ use x11_dl::{keysym::*, xlib::*};
 
 pub const WORKSPACE_COUNT: usize = 9;
 // pub const WORKSPACES: [&str; WORKSPACE_COUNT] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
-pub const MODKEY: ModMask = Mod4Mask;
 const TAG_KEYS: [u32; WORKSPACE_COUNT] = [XK_1, XK_2, XK_3, XK_4, XK_5, XK_6, XK_7, XK_8, XK_9];
+
+pub const MODKEY: ModMask = Mod4Mask;
 const TERMINAL: &str = "st";
 
 pub fn get_keymap() -> HashMap<Key, Action> {
@@ -33,4 +35,12 @@ pub fn get_keymap() -> HashMap<Key, Action> {
         ));
     }
     keymap.into_iter().collect::<HashMap<Key, Action>>()
+}
+
+pub fn get_layouts() -> Vec<(String, Box<Layout>)> {
+    vec![
+        // First entry is default.
+        (String::from("[]="), Box::new(layouts::tile::tile)),
+        (String::from("><>"), Box::new(layouts::float::float)),
+    ]
 }
