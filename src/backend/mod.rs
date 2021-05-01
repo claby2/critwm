@@ -288,31 +288,28 @@ impl Backend {
                     }
                 }
                 // Handle monitor switching case.
-                if unsafe { event.motion.window } == self.root {
-                    // If the current monitor does not contain the cursor position, find the monitor which has it.
-                    let (x, y) =
-                        unsafe { (event.button.x_root as u32, event.button.y_root as u32) };
-                    if !self.monitors[self.current_monitor].has_point(x, y) {
-                        // While iterating, skip over checking the current monitor.
-                        if let Some(monitor_index) =
-                            self.monitors.iter().enumerate().position(|(i, monitor)| {
-                                i != self.current_monitor && monitor.has_point(x, y)
-                            })
-                        {
-                            self.current_monitor = monitor_index;
-                            // Ensure that subwindow is 0.
-                            if unsafe { event.motion.subwindow } == 0 {
-                                // Cursor has entered a new monitor but is not over any clients.
-                                // Find a client to focus on.
-                                if let Some(client_index) = self
-                                    .clients
-                                    .iter()
-                                    .position(|client| client.monitor == monitor_index)
-                                {
-                                    self.set_focus(Some(client_index));
-                                } else {
-                                    self.set_focus(None);
-                                }
+                // If the current monitor does not contain the cursor position, find the monitor which has it.
+                let (x, y) = unsafe { (event.button.x_root as u32, event.button.y_root as u32) };
+                if !self.monitors[self.current_monitor].has_point(x, y) {
+                    // While iterating, skip over checking the current monitor.
+                    if let Some(monitor_index) =
+                        self.monitors.iter().enumerate().position(|(i, monitor)| {
+                            i != self.current_monitor && monitor.has_point(x, y)
+                        })
+                    {
+                        self.current_monitor = monitor_index;
+                        // Ensure that subwindow is 0.
+                        if unsafe { event.motion.subwindow } == 0 {
+                            // Cursor has entered a new monitor but is not over any clients.
+                            // Find a client to focus on.
+                            if let Some(client_index) = self
+                                .clients
+                                .iter()
+                                .position(|client| client.monitor == monitor_index)
+                            {
+                                self.set_focus(Some(client_index));
+                            } else {
+                                self.set_focus(None);
                             }
                         }
                     }
