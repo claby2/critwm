@@ -3,7 +3,7 @@ use crate::{
         client::{Client, WindowGeometry},
         monitor::MonitorGeometry,
     },
-    layouts,
+    config, layouts,
 };
 
 pub fn tile(
@@ -26,33 +26,35 @@ pub fn tile(
         .cloned()
         .collect::<Vec<WindowGeometry>>();
     if !stack_indices.is_empty() {
+        const DOUBLE_GAP: i32 = config::GAP * 2;
         let (x, y, width, height) = (
-            monitor_geometry.x as i32,
-            monitor_geometry.y as i32,
-            monitor_geometry.width as u32,
-            monitor_geometry.height as u32,
+            monitor_geometry.x,
+            monitor_geometry.y,
+            monitor_geometry.width,
+            monitor_geometry.height,
         );
         // The main window is the window that was added last.
         let main = stack_indices[stack_indices.len() - 1];
-        window_geometry[main].x = x;
-        window_geometry[main].y = y;
-        window_geometry[main].height = height;
+        window_geometry[main].x = x + config::GAP;
+        window_geometry[main].y = y + config::GAP;
+        window_geometry[main].height = height - DOUBLE_GAP;
         if stack_indices.len() > 1 {
             let middle_x = width / 2;
-            let stack_height = height / (stack_indices.len() - 1) as u32;
-            window_geometry[main].width = middle_x;
+            let stack_height = (height - config::GAP) / (stack_indices.len() - 1) as i32;
+            window_geometry[main].width = middle_x - config::GAP;
             // Pop out main window.
             stack_indices.pop();
             // Set position of children.
             for (i, geometry_index) in stack_indices.iter().enumerate() {
                 let geometry_index = *geometry_index;
-                window_geometry[geometry_index].x = x + middle_x as i32;
-                window_geometry[geometry_index].y = y + (i as i32 * stack_height as i32);
-                window_geometry[geometry_index].width = middle_x;
-                window_geometry[geometry_index].height = stack_height;
+                window_geometry[geometry_index].x = x + middle_x + config::GAP;
+                window_geometry[geometry_index].y = y + (i as i32 * stack_height) + config::GAP;
+                window_geometry[geometry_index].width = middle_x - DOUBLE_GAP;
+                window_geometry[geometry_index].height = stack_height - config::GAP;
             }
         } else {
-            window_geometry[main].width = width;
+            // Only one main window with no children.
+            window_geometry[main].width = width - DOUBLE_GAP;
         }
     }
     window_geometry

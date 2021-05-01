@@ -1,6 +1,6 @@
 use crate::backend::signal::{Signal, SIGNAL_STACK};
 use std::{
-    os::raw::{c_int, c_short, c_uint, c_ulong},
+    os::raw::{c_int, c_uint, c_ulong},
     process::Command,
 };
 
@@ -10,7 +10,6 @@ pub type XCursorShape = c_uint;
 pub type XCursor = c_ulong;
 pub type XWindowPosition = c_int;
 pub type XWindowDimension = c_uint;
-pub type XineramaInfo = c_short;
 
 #[derive(Debug)]
 pub struct Cursor {

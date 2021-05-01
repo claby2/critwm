@@ -3,7 +3,6 @@ use crate::{
     config,
     error::{CritError, CritResult},
     layouts::Layout,
-    util::XineramaInfo,
 };
 use std::{
     fmt,
@@ -15,19 +14,14 @@ use x11_dl::xinerama;
 
 #[derive(Debug)]
 pub struct MonitorGeometry {
-    pub x: XineramaInfo,
-    pub y: XineramaInfo,
-    pub width: XineramaInfo,
-    pub height: XineramaInfo,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
 }
 
 impl MonitorGeometry {
-    pub fn new(
-        x: XineramaInfo,
-        y: XineramaInfo,
-        width: XineramaInfo,
-        height: XineramaInfo,
-    ) -> Self {
+    pub fn new(x: i32, y: i32, width: i32, height: i32) -> Self {
         Self {
             x,
             y,
@@ -54,7 +48,12 @@ impl<const WORKSPACES: usize> Monitor<WORKSPACES> {
     pub fn new(layout: &Layout, info: &xinerama::XineramaScreenInfo) -> Self {
         Self {
             current_workspace: 0,
-            geometry: MonitorGeometry::new(info.x_org, info.y_org, info.width, info.height),
+            geometry: MonitorGeometry::new(
+                info.x_org as i32,
+                info.y_org as i32,
+                info.width as i32,
+                info.height as i32,
+            ),
             layout: *layout,
         }
     }
@@ -62,16 +61,16 @@ impl<const WORKSPACES: usize> Monitor<WORKSPACES> {
 
 pub trait AnyMonitor {
     fn has_window(&self, geometry: &WindowGeometry) -> bool;
-    fn has_point(&self, x: u32, y: u32) -> bool;
+    fn has_point(&self, x: i32, y: i32) -> bool;
     fn get_current_workspace(&self) -> usize;
     fn set_current_workspace(&mut self, workspace: usize) -> CritResult<()>;
     fn get_layout(&self) -> Layout;
     fn set_layout(&mut self, layout: &Layout);
     fn get_geometry(&self) -> &MonitorGeometry;
-    fn get_x(&self) -> XineramaInfo;
-    fn get_y(&self) -> XineramaInfo;
-    fn get_width(&self) -> XineramaInfo;
-    fn get_height(&self) -> XineramaInfo;
+    fn get_x(&self) -> i32;
+    fn get_y(&self) -> i32;
+    fn get_width(&self) -> i32;
+    fn get_height(&self) -> i32;
 }
 
 impl fmt::Debug for dyn AnyMonitor {
@@ -83,17 +82,16 @@ impl fmt::Debug for dyn AnyMonitor {
 impl<const WORKSPACES: usize> AnyMonitor for Monitor<WORKSPACES> {
     fn has_window(&self, geometry: &WindowGeometry) -> bool {
         self.has_point(
-            geometry.x as u32 + (geometry.width / 2),
-            geometry.y as u32 + (geometry.height / 2),
+            geometry.x + (geometry.width / 2),
+            geometry.y + (geometry.height / 2),
         )
     }
 
-    fn has_point(&self, x: u32, y: u32) -> bool {
-        // TODO: Clean up number conversions.
-        x >= self.geometry.x as u32
-            && x <= self.geometry.x as u32 + self.geometry.width as u32
-            && y >= self.geometry.y as u32
-            && y <= self.geometry.y as u32 + self.geometry.height as u32
+    fn has_point(&self, x: i32, y: i32) -> bool {
+        x >= self.geometry.x
+            && x <= self.geometry.x + self.geometry.width
+            && y >= self.geometry.y
+            && y <= self.geometry.y + self.geometry.height
     }
 
     fn get_current_workspace(&self) -> usize {
@@ -124,19 +122,19 @@ impl<const WORKSPACES: usize> AnyMonitor for Monitor<WORKSPACES> {
         &self.geometry
     }
 
-    fn get_x(&self) -> XineramaInfo {
+    fn get_x(&self) -> i32 {
         self.geometry.x
     }
 
-    fn get_y(&self) -> XineramaInfo {
+    fn get_y(&self) -> i32 {
         self.geometry.y
     }
 
-    fn get_width(&self) -> XineramaInfo {
+    fn get_width(&self) -> i32 {
         self.geometry.width
     }
 
-    fn get_height(&self) -> XineramaInfo {
+    fn get_height(&self) -> i32 {
         self.geometry.height
     }
 }

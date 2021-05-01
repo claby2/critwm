@@ -232,7 +232,6 @@ impl Backend {
                 &mut mask,
             );
         };
-        let (x, y) = (x as u32, y as u32);
         if !self.monitors[self.current_monitor].has_point(x, y) {
             // While iterating, skip over checking the current monitor.
             if let Some(monitor_index) = self
@@ -329,8 +328,8 @@ impl Backend {
                                 let (dw, dh) = diff();
                                 self.resize_client(
                                     current_client,
-                                    (self.attrs.width + dw) as u32,
-                                    (self.attrs.height + dh) as u32,
+                                    self.attrs.width + dw,
+                                    self.attrs.height + dh,
                                 );
                             }
                             _ => {}
@@ -545,8 +544,8 @@ impl Backend {
                         self.clients[index].window,
                         geometry.x,
                         geometry.y,
-                        geometry.width,
-                        geometry.height,
+                        geometry.width as u32,
+                        geometry.height as u32,
                     )
                 };
                 self.clients[index].update_geometry(&self.xlib, self.display);
@@ -554,15 +553,15 @@ impl Backend {
         }
     }
 
-    fn move_resize_client(&mut self, index: usize, x: i32, y: i32, width: u32, height: u32) {
+    fn move_resize_client(&mut self, index: usize, x: i32, y: i32, width: i32, height: i32) {
         unsafe {
             (self.xlib.XMoveResizeWindow)(
                 self.display,
                 self.clients[index].window,
                 x,
                 y,
-                width,
-                height,
+                width as u32,
+                height as u32,
             )
         };
         self.set_client_monitor(index);
@@ -573,9 +572,14 @@ impl Backend {
         self.set_client_monitor(index);
     }
 
-    fn resize_client(&mut self, index: usize, width: u32, height: u32) {
+    fn resize_client(&mut self, index: usize, width: i32, height: i32) {
         unsafe {
-            (self.xlib.XResizeWindow)(self.display, self.clients[index].window, width, height)
+            (self.xlib.XResizeWindow)(
+                self.display,
+                self.clients[index].window,
+                width as u32,
+                height as u32,
+            )
         };
         self.set_client_monitor(index);
     }
@@ -623,10 +627,10 @@ impl Backend {
             );
             self.move_resize_client(
                 index,
-                self.monitors[self.current_monitor].get_x() as i32,
-                self.monitors[self.current_monitor].get_y() as i32,
-                self.monitors[self.current_monitor].get_width() as u32,
-                self.monitors[self.current_monitor].get_height() as u32,
+                self.monitors[self.current_monitor].get_x(),
+                self.monitors[self.current_monitor].get_y(),
+                self.monitors[self.current_monitor].get_width(),
+                self.monitors[self.current_monitor].get_height(),
             );
             unsafe { (self.xlib.XRaiseWindow)(self.display, self.clients[index].window) };
         } else {

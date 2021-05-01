@@ -3,12 +3,12 @@ use x11_dl::xlib;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WindowGeometry {
-    pub x: XWindowPosition,
-    pub y: XWindowPosition,
-    pub width: XWindowDimension,
-    pub height: XWindowDimension,
-    pub border_width: XWindowDimension,
-    border_depth: XWindowDimension,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    pub border_width: i32,
+    border_depth: i32,
 }
 
 impl WindowGeometry {
@@ -36,10 +36,10 @@ impl WindowGeometry {
         Self {
             x,
             y,
-            width,
-            height,
-            border_width,
-            border_depth,
+            width: width as i32,
+            height: height as i32,
+            border_width: border_width as i32,
+            border_depth: border_depth as i32,
         }
     }
 }
