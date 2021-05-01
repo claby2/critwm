@@ -1,7 +1,7 @@
 use crate::util::{XWindowDimension, XWindowPosition};
 use x11_dl::xlib;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WindowGeometry {
     pub x: XWindowPosition,
     pub y: XWindowPosition,

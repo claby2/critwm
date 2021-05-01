@@ -27,7 +27,8 @@ pub fn tile(
             monitor_geometry.width as u32,
             monitor_geometry.height as u32,
         );
-        let main = stack_indices[0];
+        // The main window is the window that was added last.
+        let main = stack_indices[stack_indices.len() - 1];
         window_geometry[main].x = x;
         window_geometry[main].y = y;
         window_geometry[main].height = height;
@@ -35,11 +36,13 @@ pub fn tile(
             let middle_x = width / 2;
             let stack_height = height / (stack_indices.len() - 1) as u32;
             window_geometry[main].width = middle_x;
+            // Pop out main window.
+            stack_indices.pop();
             // Set position of children.
-            for (i, geometry_index) in stack_indices.iter().enumerate().skip(1) {
+            for (i, geometry_index) in stack_indices.iter().enumerate() {
                 let geometry_index = *geometry_index;
                 window_geometry[geometry_index].x = x + middle_x as i32;
-                window_geometry[geometry_index].y = y + ((i - 1) as i32 * stack_height as i32);
+                window_geometry[geometry_index].y = y + (i as i32 * stack_height as i32);
                 window_geometry[geometry_index].width = middle_x;
                 window_geometry[geometry_index].height = stack_height;
             }

@@ -14,7 +14,7 @@ use atom::Atom;
 use client::Client;
 use monitor::{Monitor, MonitorManager};
 use signal::{Signal, SIGNAL_STACK};
-use std::{cmp, collections::HashMap, mem, ptr, slice};
+use std::{collections::HashMap, mem, ptr, slice};
 use x11_dl::{xinerama, xlib};
 
 pub struct Backend {
@@ -27,7 +27,7 @@ pub struct Backend {
     cursor: Cursor,
     key_map: HashMap<Key, Action>,
     clients: Vec<Client>,
-    current_client: usize,
+    current_client: Option<usize>,
     monitors: MonitorManager,
     layouts: Vec<(String, Box<Layout>)>,
     current_monitor: usize,
@@ -79,7 +79,8 @@ impl Backend {
             cursor,
             key_map: config::get_keymap(),
             clients: Vec::new(),
-            current_client: 0,
+            // current_client as None means that no client is focused.
+            current_client: None,
             monitors: MonitorManager::new(),
             layouts: config::get_layouts(),
             current_monitor: 0,
@@ -127,18 +128,20 @@ impl Backend {
     }
 
     pub fn kill_client(&self) {
-        if let Some(client) = self.clients.get(self.current_client) {
-            // Try kill the client nicely.
-            if !self.send_xevent_atom(client.window, self.atoms.wm_delete) {
-                // Force kill the client.
-                unsafe {
-                    (self.xlib.XGrabServer)(self.display);
-                    (self.xlib.XSetErrorHandler)(Some(Self::xerror_dummy));
-                    (self.xlib.XSetCloseDownMode)(self.display, xlib::DestroyAll);
-                    (self.xlib.XKillClient)(self.display, client.window);
-                    (self.xlib.XSync)(self.display, xlib::False);
-                    (self.xlib.XSetErrorHandler)(Some(Self::xerror));
-                    (self.xlib.XUngrabServer)(self.display);
+        if let Some(current_client) = self.current_client {
+            if let Some(client) = self.clients.get(current_client) {
+                // Try kill the client nicely.
+                if !self.send_xevent_atom(client.window, self.atoms.wm_delete) {
+                    // Force kill the client.
+                    unsafe {
+                        (self.xlib.XGrabServer)(self.display);
+                        (self.xlib.XSetErrorHandler)(Some(Self::xerror_dummy));
+                        (self.xlib.XSetCloseDownMode)(self.display, xlib::DestroyAll);
+                        (self.xlib.XKillClient)(self.display, client.window);
+                        (self.xlib.XSync)(self.display, xlib::False);
+                        (self.xlib.XSetErrorHandler)(Some(Self::xerror));
+                        (self.xlib.XUngrabServer)(self.display);
+                    }
                 }
             }
         }
@@ -173,13 +176,21 @@ impl Backend {
                         self.monitors[self.current_monitor].set_current_workspace(new_workspace)?;
                     }
                 }
-                Signal::MoveToWorkspace(workspace) => {
+                Signal::MoveToWorkspace(new_workspace) => {
                     // Move currently focused client to given workspace.
-                    let mut client = &mut self.clients[self.current_client];
-                    if client.workspace != workspace {
-                        client.workspace = workspace;
-                        // Hide window as it has moved to another workspace.
-                        unsafe { (self.xlib.XUnmapWindow)(self.display, client.window) };
+                    if let Some(current_client) = self.current_client {
+                        let mut client = &mut self.clients[current_client];
+                        if client.workspace != new_workspace {
+                            client.workspace = new_workspace;
+                            // Hide window as it has moved to another workspace.
+                            unsafe { (self.xlib.XUnmapWindow)(self.display, client.window) };
+                            // Arrange both the current workspace and the new workspace.
+                            self.arrange(
+                                self.current_monitor,
+                                self.monitors[self.current_monitor].get_current_workspace(),
+                            );
+                            self.arrange(self.current_monitor, new_workspace);
+                        }
                     }
                 }
             }
@@ -214,37 +225,43 @@ impl Backend {
             }
             xlib::MotionNotify => {
                 if self.start.subwindow != 0 {
-                    // Compress motion notify events.
-                    while unsafe {
-                        (self.xlib.XCheckTypedEvent)(self.display, xlib::MotionNotify, &mut event)
-                    } > 0
-                    {}
-                    let diff = || unsafe {
-                        (
-                            event.button.x_root - self.start.x_root,
-                            event.button.y_root - self.start.y_root,
-                        )
-                    };
-                    match self.start.button {
-                        xlib::Button1 => {
-                            self.set_cursor(self.cursor.mov);
-                            let (dx, dy) = diff();
-                            self.move_client(
-                                self.current_client,
-                                self.attrs.x + dx,
-                                self.attrs.y + dy,
-                            );
+                    if let Some(current_client) = self.current_client {
+                        // Compress motion notify events.
+                        while unsafe {
+                            (self.xlib.XCheckTypedEvent)(
+                                self.display,
+                                xlib::MotionNotify,
+                                &mut event,
+                            )
+                        } > 0
+                        {}
+                        let diff = || unsafe {
+                            (
+                                event.button.x_root - self.start.x_root,
+                                event.button.y_root - self.start.y_root,
+                            )
+                        };
+                        match self.start.button {
+                            xlib::Button1 => {
+                                self.set_cursor(self.cursor.mov);
+                                let (dx, dy) = diff();
+                                self.move_client(
+                                    current_client,
+                                    self.attrs.x + dx,
+                                    self.attrs.y + dy,
+                                );
+                            }
+                            xlib::Button3 => {
+                                self.set_cursor(self.cursor.res);
+                                let (dw, dh) = diff();
+                                self.resize_client(
+                                    current_client,
+                                    (self.attrs.width + dw) as u32,
+                                    (self.attrs.height + dh) as u32,
+                                );
+                            }
+                            _ => {}
                         }
-                        xlib::Button3 => {
-                            self.set_cursor(self.cursor.res);
-                            let (dw, dh) = diff();
-                            self.resize_client(
-                                self.current_client,
-                                (self.attrs.width + dw) as u32,
-                                (self.attrs.height + dh) as u32,
-                            );
-                        }
-                        _ => {}
                     }
                 }
                 // Handle monitor switching case.
@@ -270,6 +287,8 @@ impl Backend {
                                     .position(|client| client.monitor == monitor_index)
                                 {
                                     self.set_focus(Some(client_index));
+                                } else {
+                                    self.set_focus(None);
                                 }
                             }
                         }
@@ -375,7 +394,10 @@ impl Backend {
                 let index = self.clients.len() - 1;
                 self.set_focus(Some(index));
                 // Configure layout.
-                self.arrange();
+                self.arrange(
+                    self.current_monitor,
+                    self.monitors[self.current_monitor].get_current_workspace(),
+                );
             }
             xlib::UnmapNotify => {
                 let unmap_event = unsafe { event.unmap };
@@ -397,21 +419,22 @@ impl Backend {
             }
             xlib::DestroyNotify => {
                 // Get the window that should be destroyed.
-                if let Some(client_index) = self
+                if let Some((client_index, client)) = self
                     .clients
                     .iter()
-                    .position(|client| client.window == unsafe { event.destroy_window.window })
+                    .enumerate()
+                    .find(|(_, client)| client.window == unsafe { event.destroy_window.window })
                 {
+                    let workspace = self.monitors[client.monitor].get_current_workspace();
                     // Remove destroyed client.
                     self.clients.remove(client_index);
-                    // Adjust client index and ensure it is not out of bounds.
-                    self.current_client =
-                        cmp::max(cmp::min(self.clients.len() - 1, client_index), 0);
-                    if !self.clients.is_empty() {
-                        // Set focus to current client.
-                        self.set_focus(None);
-                    }
-                    self.arrange();
+                    self.set_focus(
+                        self.clients
+                            .iter()
+                            .rev()
+                            .position(|client| self.is_visible(workspace, client)),
+                    );
+                    self.arrange(self.current_monitor, workspace);
                 }
             }
             xlib::ClientMessage => {
@@ -433,12 +456,14 @@ impl Backend {
             }
             xlib::PropertyNotify => {
                 if unsafe { event.property.atom } == self.atoms.net_wm_window_type {
-                    if let Some(state) = self.get_atom_prop(
-                        self.clients[self.current_client].window,
-                        self.atoms.net_wm_state,
-                    ) {
-                        if state == self.atoms.net_wm_state_fullscreen {
-                            self.toggle_fullscreen(self.current_client);
+                    if let Some(current_client) = self.current_client {
+                        if let Some(state) = self.get_atom_prop(
+                            self.clients[current_client].window,
+                            self.atoms.net_wm_state,
+                        ) {
+                            if state == self.atoms.net_wm_state_fullscreen {
+                                self.toggle_fullscreen(current_client);
+                            }
                         }
                     }
                 }
@@ -448,7 +473,7 @@ impl Backend {
         Ok(())
     }
 
-    // Return if client is visible in given workspace
+    // Return if client is visible in the current monitor in given workspace.
     fn is_visible(&self, workspace: usize, client: &Client) -> bool {
         client.monitor == self.current_monitor && client.workspace == workspace
     }
@@ -457,24 +482,29 @@ impl Backend {
         unsafe { (self.xlib.XDefineCursor)(self.display, self.root, cursor) };
     }
 
-    fn arrange(&mut self) {
-        let layout = self.monitors[self.current_monitor].get_layout();
+    fn arrange(&mut self, monitor: usize, workspace: usize) {
+        let layout = self.monitors[monitor].get_layout();
         for (index, geometry) in layout(
-            self.current_monitor,
-            self.monitors[self.current_monitor].get_current_workspace(),
-            self.monitors[self.current_monitor].get_geometry(),
+            monitor,
+            workspace,
+            self.monitors[monitor].get_geometry(),
             &self.clients,
         )
         .iter()
         .enumerate()
         {
-            self.move_resize_client(
-                index,
-                geometry.x,
-                geometry.y,
-                geometry.width,
-                geometry.height,
-            )
+            if self.clients[index].get_geometry() != geometry {
+                unsafe {
+                    (self.xlib.XMoveResizeWindow)(
+                        self.display,
+                        self.clients[index].window,
+                        geometry.x,
+                        geometry.y,
+                        geometry.width,
+                        geometry.height,
+                    )
+                };
+            }
         }
     }
 
@@ -519,19 +549,21 @@ impl Backend {
         }
     }
 
+    // Set new input focus. If index is None, set focus to root.
     fn set_focus(&mut self, index: Option<usize>) {
-        if let Some(index) = index {
-            // If given Some(index), change the current client index.
-            self.current_client = index;
-        }
+        self.current_client = index;
+        let new_focus = match index {
+            Some(index) => self.clients[index].window,
+            None => self.root,
+        };
         unsafe {
             (self.xlib.XSetInputFocus)(
                 self.display,
-                self.clients[self.current_client].window,
+                new_focus,
                 xlib::RevertToParent,
                 xlib::CurrentTime,
-            )
-        };
+            );
+        }
     }
 
     fn toggle_fullscreen(&mut self, index: usize) {
