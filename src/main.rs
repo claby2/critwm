@@ -15,6 +15,7 @@ fn run() -> CritResult<()> {
     backend.grab_buttons();
     loop {
         backend.handle_signal()?;
+        backend.handle_cursor();
         backend.handle_event()?;
     }
 }

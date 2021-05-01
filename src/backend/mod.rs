@@ -210,6 +210,56 @@ impl Backend {
         Ok(())
     }
 
+    pub fn handle_cursor(&mut self) {
+        // Handle monitor switching case.
+        // If the current monitor does not contain the cursor position, find the monitor which has it.
+        let (mut x, mut y) = (0, 0);
+        let mut root_return: xlib::Window = 0;
+        let mut child_return: xlib::Window = 0;
+        let mut root_x = 0;
+        let mut root_y = 0;
+        let mut mask = 0;
+        unsafe {
+            (self.xlib.XQueryPointer)(
+                self.display,
+                self.root,
+                &mut root_return,
+                &mut child_return,
+                &mut x,
+                &mut y,
+                &mut root_x,
+                &mut root_y,
+                &mut mask,
+            );
+        };
+        let (x, y) = (x as u32, y as u32);
+        if !self.monitors[self.current_monitor].has_point(x, y) {
+            // While iterating, skip over checking the current monitor.
+            if let Some(monitor_index) = self
+                .monitors
+                .iter()
+                .enumerate()
+                .position(|(i, monitor)| i != self.current_monitor && monitor.has_point(x, y))
+            {
+                self.current_monitor = monitor_index;
+                // Ensure that subwindow is 0.
+                if child_return == 0 {
+                    // Cursor has entered a new monitor but is not over any clients.
+                    // Find a client to focus on.
+                    if let Some(client_index) = self
+                        .clients
+                        .iter()
+                        .position(|client| client.monitor == monitor_index)
+                    {
+                        self.set_focus(Some(client_index));
+                    } else {
+                        self.set_focus(None);
+                    }
+                }
+            }
+        }
+    }
+
     pub fn handle_event(&mut self) -> CritResult<()> {
         // Handle events from xlib.
         let mut event: xlib::XEvent = unsafe { mem::zeroed() };
@@ -284,33 +334,6 @@ impl Backend {
                                 );
                             }
                             _ => {}
-                        }
-                    }
-                }
-                // Handle monitor switching case.
-                // If the current monitor does not contain the cursor position, find the monitor which has it.
-                let (x, y) = unsafe { (event.button.x_root as u32, event.button.y_root as u32) };
-                if !self.monitors[self.current_monitor].has_point(x, y) {
-                    // While iterating, skip over checking the current monitor.
-                    if let Some(monitor_index) =
-                        self.monitors.iter().enumerate().position(|(i, monitor)| {
-                            i != self.current_monitor && monitor.has_point(x, y)
-                        })
-                    {
-                        self.current_monitor = monitor_index;
-                        // Ensure that subwindow is 0.
-                        if unsafe { event.motion.subwindow } == 0 {
-                            // Cursor has entered a new monitor but is not over any clients.
-                            // Find a client to focus on.
-                            if let Some(client_index) = self
-                                .clients
-                                .iter()
-                                .position(|client| client.monitor == monitor_index)
-                            {
-                                self.set_focus(Some(client_index));
-                            } else {
-                                self.set_focus(None);
-                            }
                         }
                     }
                 }
@@ -526,6 +549,7 @@ impl Backend {
                         geometry.height,
                     )
                 };
+                self.clients[index].update_geometry(&self.xlib, self.display);
             }
         }
     }
@@ -617,6 +641,10 @@ impl Backend {
                 old_geometry.y,
                 old_geometry.width,
                 old_geometry.height,
+            );
+            self.arrange(
+                self.current_monitor,
+                self.monitors[self.current_monitor].get_current_workspace(),
             );
         }
     }
