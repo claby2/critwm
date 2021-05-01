@@ -405,7 +405,6 @@ impl Backend {
                             | xlib::EnterWindowMask
                             | xlib::PropertyChangeMask,
                     );
-                    (self.xlib.XMapWindow)(self.display, window);
                 };
                 self.clients.push(Client::new(
                     &self.xlib,
@@ -421,6 +420,9 @@ impl Backend {
                     self.current_monitor,
                     self.monitors[self.current_monitor].get_current_workspace(),
                 );
+                unsafe {
+                    (self.xlib.XMapWindow)(self.display, window);
+                }
             }
             xlib::UnmapNotify => {
                 let unmap_event = unsafe { event.unmap };
