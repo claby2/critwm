@@ -18,6 +18,9 @@ pub fn get_keymap() -> HashMap<Key, Action> {
         key!(MODKEY, XK_space, util::spawn("dmenu_run")),
         key!(MODKEY, XK_Return, util::spawn(TERMINAL)),
         key!(MODKEY, XK_w, util::signal(Signal::KillClient)),
+        key!(MODKEY, XK_s, util::signal(Signal::ToggleFloating)),
+        key!(MODKEY, XK_t, util::signal(Signal::SetLayout(0))),
+        key!(MODKEY, XK_f, util::signal(Signal::SetLayout(1))),
         key!(MODKEY | ShiftMask, XK_q, process::exit(0)),
     ];
     for (i, tag_key) in TAG_KEYS.iter().enumerate() {

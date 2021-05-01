@@ -53,6 +53,7 @@ pub struct Client {
     pub monitor: usize,
     pub workspace: usize,
     pub fullscreen: bool,
+    pub floating: bool,
 }
 
 impl Client {
@@ -71,6 +72,7 @@ impl Client {
             monitor,
             workspace,
             fullscreen: false,
+            floating: false,
         }
     }
 

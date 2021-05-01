@@ -1,6 +1,9 @@
-use crate::backend::{
-    client::{Client, WindowGeometry},
-    monitor::MonitorGeometry,
+use crate::{
+    backend::{
+        client::{Client, WindowGeometry},
+        monitor::MonitorGeometry,
+    },
+    layouts,
 };
 
 pub fn float(
@@ -11,7 +14,7 @@ pub fn float(
 ) -> Vec<WindowGeometry> {
     let mut last = None;
     for (index, client) in clients.iter().enumerate() {
-        if client.monitor == monitor_index && client.workspace == workspace {
+        if layouts::is_arrangeable(client, monitor_index, workspace) {
             last = Some(index);
         }
     }

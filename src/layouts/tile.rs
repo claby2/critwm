@@ -1,6 +1,9 @@
-use crate::backend::{
-    client::{Client, WindowGeometry},
-    monitor::MonitorGeometry,
+use crate::{
+    backend::{
+        client::{Client, WindowGeometry},
+        monitor::MonitorGeometry,
+    },
+    layouts,
 };
 
 pub fn tile(
@@ -10,10 +13,12 @@ pub fn tile(
     clients: &[Client],
 ) -> Vec<WindowGeometry> {
     let mut stack_indices = Vec::new();
-    for (index, client) in clients.iter().enumerate() {
-        if client.monitor == monitor_index && client.workspace == workspace {
-            stack_indices.push(index);
-        }
+    for (index, _) in clients
+        .iter()
+        .enumerate()
+        .filter(|(_, client)| layouts::is_arrangeable(client, monitor_index, workspace))
+    {
+        stack_indices.push(index);
     }
     let mut window_geometry = clients
         .iter()

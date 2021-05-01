@@ -152,6 +152,18 @@ impl Backend {
         if let Some(signal) = SIGNAL_STACK.lock().unwrap().pop() {
             match signal {
                 Signal::KillClient => self.kill_client(),
+                Signal::ToggleFloating => {
+                    if let Some(current_client) = self.current_client {
+                        self.clients[current_client].floating = false;
+                        self.arrange(
+                            self.current_monitor,
+                            self.monitors[self.current_monitor].get_current_workspace(),
+                        );
+                    }
+                }
+                Signal::SetLayout(layout_index) => {
+                    self.monitors[self.current_monitor].set_layout(&self.layouts[layout_index].1);
+                }
                 Signal::ChangeWorkspace(new_workspace) => {
                     // Change workspace of selected monitor to given workspace.
                     let monitor = &self.monitors[self.current_monitor];
@@ -222,6 +234,17 @@ impl Backend {
                     (self.xlib.XRaiseWindow)(self.display, event.button.subwindow);
                 };
                 self.start = unsafe { event.button };
+                if let Some(client_index) = self
+                    .clients
+                    .iter()
+                    .position(|client| client.window == self.start.subwindow)
+                {
+                    self.clients[client_index].floating = true;
+                    self.arrange(
+                        self.current_monitor,
+                        self.monitors[self.current_monitor].get_current_workspace(),
+                    );
+                }
             }
             xlib::MotionNotify => {
                 if self.start.subwindow != 0 {
