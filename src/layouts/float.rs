@@ -12,22 +12,18 @@ pub fn float(
     monitor_geometry: &MonitorGeometry,
     clients: &[Client],
 ) -> Vec<WindowGeometry> {
-    let mut last = None;
-    for (index, client) in clients.iter().enumerate() {
-        if layouts::is_arrangeable(client, monitor_index, workspace) {
-            last = Some(index);
-        }
-    }
-    let mut window_geometry = clients
+    clients
         .iter()
-        .map(|client| client.get_geometry())
-        .cloned()
-        .collect::<Vec<WindowGeometry>>();
-    if let Some(last) = last {
-        if let Some(geometry) = window_geometry.get_mut(last) {
-            geometry.x = monitor_geometry.x as i32;
-            geometry.y = monitor_geometry.y as i32;
-        }
-    }
-    window_geometry
+        .map(|client| {
+            let mut geometry = client.get_geometry().clone();
+            // Set client position to current monitor if it is arrangeable and currently outside.
+            if layouts::is_arrangeable(client, monitor_index, workspace)
+                && !monitor_geometry.has_window(&geometry)
+            {
+                geometry.x = monitor_geometry.x;
+                geometry.y = monitor_geometry.y;
+            }
+            geometry
+        })
+        .collect::<Vec<WindowGeometry>>()
 }

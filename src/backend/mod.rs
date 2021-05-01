@@ -154,7 +154,14 @@ impl Backend {
                 Signal::KillClient => self.kill_client(),
                 Signal::ToggleFloating => {
                     if let Some(current_client) = self.current_client {
-                        self.clients[current_client].floating = false;
+                        self.clients[current_client].floating =
+                            !self.clients[current_client].floating;
+                        unsafe {
+                            (self.xlib.XRaiseWindow)(
+                                self.display,
+                                self.clients[current_client].window,
+                            )
+                        };
                         self.arrange(
                             self.current_monitor,
                             self.monitors[self.current_monitor].get_current_workspace(),
@@ -163,6 +170,16 @@ impl Backend {
                 }
                 Signal::SetLayout(layout_index) => {
                     self.monitors[self.current_monitor].set_layout(&self.layouts[layout_index].1);
+                    // Ensure that all clients in current monitor are not floating.
+                    for client in self.clients.iter_mut() {
+                        if client.monitor == self.current_monitor {
+                            client.floating = false;
+                        }
+                    }
+                    // Go through each workspace in current monitor and arrange windows.
+                    for workspace in 0..config::WORKSPACE_COUNT {
+                        self.arrange(self.current_monitor, workspace);
+                    }
                 }
                 Signal::ChangeWorkspace(new_workspace) => {
                     // Change workspace of selected monitor to given workspace.
@@ -232,13 +249,15 @@ impl Backend {
                 &mut mask,
             );
         };
-        if !self.monitors[self.current_monitor].has_point(x, y) {
+        if !self.monitors[self.current_monitor]
+            .get_geometry()
+            .has_point(x, y)
+        {
             // While iterating, skip over checking the current monitor.
-            if let Some(monitor_index) = self
-                .monitors
-                .iter()
-                .enumerate()
-                .position(|(i, monitor)| i != self.current_monitor && monitor.has_point(x, y))
+            if let Some(monitor_index) =
+                self.monitors.iter().enumerate().position(|(i, monitor)| {
+                    i != self.current_monitor && monitor.get_geometry().has_point(x, y)
+                })
             {
                 self.current_monitor = monitor_index;
                 // Ensure that subwindow is 0.
@@ -592,7 +611,7 @@ impl Backend {
         if let Some(monitor_index) = self
             .monitors
             .iter()
-            .position(|monitor| monitor.has_window(&geometry))
+            .position(|monitor| monitor.get_geometry().has_window(&geometry))
         {
             client.monitor = monitor_index;
             client.workspace = self.monitors[monitor_index].get_current_workspace();

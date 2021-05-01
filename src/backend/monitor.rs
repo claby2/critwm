@@ -29,6 +29,17 @@ impl MonitorGeometry {
             height,
         }
     }
+
+    pub fn has_window(&self, geometry: &WindowGeometry) -> bool {
+        self.has_point(
+            geometry.x + (geometry.width / 2),
+            geometry.y + (geometry.height / 2),
+        )
+    }
+
+    pub fn has_point(&self, x: i32, y: i32) -> bool {
+        x >= self.x && x <= self.x + self.width && y >= self.y && y <= self.y + self.height
+    }
 }
 
 pub struct Monitor<const WORKSPACES: usize> {
@@ -60,8 +71,6 @@ impl<const WORKSPACES: usize> Monitor<WORKSPACES> {
 }
 
 pub trait AnyMonitor {
-    fn has_window(&self, geometry: &WindowGeometry) -> bool;
-    fn has_point(&self, x: i32, y: i32) -> bool;
     fn get_current_workspace(&self) -> usize;
     fn set_current_workspace(&mut self, workspace: usize) -> CritResult<()>;
     fn get_layout(&self) -> Layout;
@@ -80,20 +89,6 @@ impl fmt::Debug for dyn AnyMonitor {
 }
 
 impl<const WORKSPACES: usize> AnyMonitor for Monitor<WORKSPACES> {
-    fn has_window(&self, geometry: &WindowGeometry) -> bool {
-        self.has_point(
-            geometry.x + (geometry.width / 2),
-            geometry.y + (geometry.height / 2),
-        )
-    }
-
-    fn has_point(&self, x: i32, y: i32) -> bool {
-        x >= self.geometry.x
-            && x <= self.geometry.x + self.geometry.width
-            && y >= self.geometry.y
-            && y <= self.geometry.y + self.geometry.height
-    }
-
     fn get_current_workspace(&self) -> usize {
         self.current_workspace
     }
