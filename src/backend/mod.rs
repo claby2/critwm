@@ -435,31 +435,40 @@ impl Backend {
             }
             xlib::MapRequest => {
                 let window = unsafe { event.map_request.window };
+                let mut attrs: xlib::XWindowAttributes = unsafe { mem::zeroed() };
                 unsafe {
-                    (self.xlib.XSelectInput)(
+                    (self.xlib.XGetWindowAttributes)(self.display, window, &mut attrs);
+                    (self.xlib.XRaiseWindow)(self.display, event.button.subwindow);
+                };
+                if attrs.override_redirect == 0
+                    && !self.clients.iter().any(|client| client.window == window)
+                {
+                    unsafe {
+                        (self.xlib.XSelectInput)(
+                            self.display,
+                            window,
+                            xlib::StructureNotifyMask
+                                | xlib::EnterWindowMask
+                                | xlib::PropertyChangeMask,
+                        );
+                    };
+                    self.clients.push(Client::new(
+                        &self.xlib,
                         self.display,
                         window,
-                        xlib::StructureNotifyMask
-                            | xlib::EnterWindowMask
-                            | xlib::PropertyChangeMask,
+                        self.current_monitor,
+                        self.monitors[self.current_monitor].get_current_workspace(),
+                    ));
+                    let index = self.clients.len() - 1;
+                    self.set_focus(Some(index));
+                    // Configure layout.
+                    self.arrange(
+                        self.current_monitor,
+                        self.monitors[self.current_monitor].get_current_workspace(),
                     );
-                };
-                self.clients.push(Client::new(
-                    &self.xlib,
-                    self.display,
-                    window,
-                    self.current_monitor,
-                    self.monitors[self.current_monitor].get_current_workspace(),
-                ));
-                let index = self.clients.len() - 1;
-                self.set_focus(Some(index));
-                // Configure layout.
-                self.arrange(
-                    self.current_monitor,
-                    self.monitors[self.current_monitor].get_current_workspace(),
-                );
-                unsafe {
-                    (self.xlib.XMapWindow)(self.display, window);
+                    unsafe {
+                        (self.xlib.XMapWindow)(self.display, window);
+                    }
                 }
             }
             xlib::UnmapNotify => {
