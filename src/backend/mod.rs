@@ -160,6 +160,7 @@ impl Backend {
     pub fn handle_signal(&mut self) -> CritResult<()> {
         // Handle signals.
         if let Some(signal) = SIGNAL_STACK.lock().unwrap().pop() {
+            info!("Received signal: {:?}", signal);
             match signal {
                 Signal::Quit => {
                     self.clients.iter().for_each(|client| unsafe {
@@ -313,10 +314,11 @@ impl Backend {
                 if child_return == 0 {
                     // Cursor has entered a new monitor but is not over any clients.
                     // Find a client to focus on.
+                    let workspace = self.monitors[self.current_monitor].get_current_workspace();
                     if let Some(client_index) = self
                         .clients
                         .iter()
-                        .position(|client| client.monitor == monitor_index)
+                        .position(|client| self.is_visible(workspace, client))
                     {
                         self.set_focus(Some(client_index));
                     } else {
@@ -331,7 +333,9 @@ impl Backend {
         // Handle events from xlib.
         let mut event: xlib::XEvent = unsafe { mem::zeroed() };
         unsafe { (self.xlib.XNextEvent)(self.display, &mut event) };
-        match event.get_type() {
+        let event_type = event.get_type();
+        trace!("New event: {:?}", event_type);
+        match event_type {
             xlib::KeyPress => {
                 let key_event = xlib::XKeyEvent::from(event);
                 let keysym = unsafe {
@@ -494,7 +498,6 @@ impl Backend {
                 {
                     self.add_window(window);
                     let index = self.clients.len() - 1;
-                    self.set_focus(Some(index));
                     // Configure layout.
                     self.arrange(
                         self.current_monitor,
@@ -503,6 +506,7 @@ impl Backend {
                     unsafe {
                         (self.xlib.XMapWindow)(self.display, window);
                     }
+                    self.set_focus(Some(index));
                 }
             }
             xlib::UnmapNotify => {
@@ -525,21 +529,23 @@ impl Backend {
             }
             xlib::DestroyNotify => {
                 // Get the window that should be destroyed.
-                if let Some((client_index, client)) = self
+                if let Some((client_index, target_client)) = self
                     .clients
                     .iter()
                     .enumerate()
                     .find(|(_, client)| client.window == unsafe { event.destroy_window.window })
                 {
-                    let workspace = self.monitors[client.monitor].get_current_workspace();
+                    let workspace = self.monitors[target_client.monitor].get_current_workspace();
                     // Remove destroyed client.
                     self.clients.remove(client_index);
-                    self.set_focus(
-                        self.clients
-                            .iter()
-                            .rev()
-                            .position(|client| self.is_visible(workspace, client)),
-                    );
+                    if let Some(new_focus) = self
+                        .clients
+                        .iter()
+                        .rev()
+                        .position(|client| self.is_visible(workspace, client))
+                    {
+                        self.set_focus(Some(self.clients.len() - new_focus - 1));
+                    }
                     self.arrange(self.current_monitor, workspace);
                 }
             }
@@ -608,6 +614,7 @@ impl Backend {
                             && attrs.map_state == xlib::IsViewable
                     })
                     .collect();
+            info!("Queried {} viewable windows", windows.len());
             windows.iter().for_each(|window| self.add_window(**window));
             self.arrange(
                 self.current_monitor,
@@ -632,12 +639,13 @@ impl Backend {
                 xlib::StructureNotifyMask | xlib::EnterWindowMask | xlib::PropertyChangeMask,
             );
         };
+        let workspace = self.monitors[self.current_monitor].get_current_workspace();
         self.clients.push(Client::fetch(
             &self.xlib,
             self.display,
             window,
             self.current_monitor,
-            self.monitors[self.current_monitor].get_current_workspace(),
+            workspace,
         ));
     }
 

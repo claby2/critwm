@@ -1,4 +1,7 @@
 #[macro_use]
+extern crate log;
+
+#[macro_use]
 mod util;
 mod backend;
 mod config;
@@ -10,6 +13,7 @@ use error::CritResult;
 use std::process;
 
 fn run() -> CritResult<()> {
+    info!("Started critwm");
     let mut backend = Backend::new()?;
     backend.grab_keys();
     backend.grab_buttons();
@@ -21,10 +25,11 @@ fn run() -> CritResult<()> {
 }
 
 fn main() {
+    env_logger::init();
     match run() {
         Ok(()) => process::exit(0),
         Err(e) => {
-            eprintln!("ERROR: {}", e);
+            error!("{}", e);
             process::exit(1)
         }
     }
