@@ -2,12 +2,19 @@ use lazy_static::lazy_static;
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone)]
+pub enum Dir {
+    Up,
+    Down,
+}
+
+#[derive(Debug, Clone)]
 pub enum Signal {
     KillClient,
     ToggleFloating,
     SetLayout(usize),
     ChangeWorkspace(usize),
     MoveToWorkspace(usize),
+    FocusStack(Dir),
 }
 
 lazy_static! {

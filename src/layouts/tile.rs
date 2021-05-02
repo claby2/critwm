@@ -45,7 +45,7 @@ pub fn tile(
             // Pop out main window.
             stack_indices.pop();
             // Set position of children.
-            for (i, geometry_index) in stack_indices.iter().enumerate() {
+            for (i, geometry_index) in stack_indices.iter().rev().enumerate() {
                 let geometry_index = *geometry_index;
                 window_geometry[geometry_index].x = x + middle_x + config::GAP;
                 window_geometry[geometry_index].y = y + (i as i32 * stack_height) + config::GAP;

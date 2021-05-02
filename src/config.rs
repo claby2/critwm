@@ -1,5 +1,5 @@
 use crate::{
-    backend::signal::Signal,
+    backend::signal::{Dir, Signal},
     layouts::{self, Layout},
     util::{self, Action, Key, ModMask},
 };
@@ -19,6 +19,8 @@ pub fn get_keymap() -> HashMap<Key, Action> {
     let mut keymap: Vec<(Key, Action)> = vec![
         key!(MODKEY, XK_space, util::spawn("dmenu_run")),
         key!(MODKEY, XK_Return, util::spawn(TERMINAL)),
+        key!(MODKEY, XK_j, util::signal(Signal::FocusStack(Dir::Down))),
+        key!(MODKEY, XK_k, util::signal(Signal::FocusStack(Dir::Up))),
         key!(MODKEY, XK_w, util::signal(Signal::KillClient)),
         key!(MODKEY, XK_s, util::signal(Signal::ToggleFloating)),
         key!(MODKEY, XK_t, util::signal(Signal::SetLayout(0))),

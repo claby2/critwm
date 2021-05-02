@@ -13,7 +13,7 @@ use crate::{
 use atom::Atom;
 use client::Client;
 use monitor::{Monitor, MonitorManager};
-use signal::{Signal, SIGNAL_STACK};
+use signal::{Dir, Signal, SIGNAL_STACK};
 use std::{collections::HashMap, mem, ptr, slice};
 use x11_dl::{xinerama, xlib};
 
@@ -220,6 +220,30 @@ impl Backend {
                             );
                             self.arrange(self.current_monitor, new_workspace);
                         }
+                    }
+                }
+                Signal::FocusStack(direction) => {
+                    if let Some(current_client) = self.current_client {
+                        let workspace = self.monitors[self.current_monitor].get_current_workspace();
+                        if let Some((index, _)) = match direction {
+                            Dir::Up => self
+                                .clients
+                                .iter()
+                                .enumerate()
+                                .cycle()
+                                .skip(current_client + 1)
+                                .find(|(_, client)| self.is_visible(workspace, client)),
+                            Dir::Down => self
+                                .clients
+                                .iter()
+                                .enumerate()
+                                .rev()
+                                .cycle()
+                                .skip(self.clients.len() - current_client)
+                                .find(|(_, client)| self.is_visible(workspace, client)),
+                        } {
+                            self.set_focus(Some(index));
+                        };
                     }
                 }
             }
