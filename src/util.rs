@@ -51,8 +51,13 @@ macro_rules! key {
     };
 }
 
-pub fn spawn(program: &str) {
-    Command::new(program).spawn().unwrap();
+pub fn spawn(parts: &str) {
+    let parts = String::from(parts);
+    let mut parts = parts.trim().split_whitespace();
+    Command::new(parts.next().unwrap())
+        .args(parts)
+        .spawn()
+        .unwrap();
 }
 
 pub fn signal(signal: Signal) {
