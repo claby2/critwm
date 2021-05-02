@@ -92,6 +92,7 @@ impl Backend {
     }
 
     pub fn grab_keys(&self) {
+        unsafe { (self.xlib.XUngrabKey)(self.display, xlib::AnyKey, xlib::AnyModifier, self.root) };
         for key in self.key_map.keys() {
             let code = unsafe { (self.xlib.XKeysymToKeycode)(self.display, key.sym) };
             unsafe {
@@ -109,6 +110,14 @@ impl Backend {
     }
 
     pub fn grab_buttons(&self) {
+        unsafe {
+            (self.xlib.XUngrabButton)(
+                self.display,
+                xlib::AnyButton as u32,
+                xlib::AnyModifier,
+                self.root,
+            )
+        };
         let grab_button = |button: u32| unsafe {
             (self.xlib.XGrabButton)(
                 self.display,
@@ -151,6 +160,22 @@ impl Backend {
         // Handle signals.
         if let Some(signal) = SIGNAL_STACK.lock().unwrap().pop() {
             match signal {
+                Signal::Quit => {
+                    for client_index in 0..self.clients.len() {
+                        self.current_client = Some(client_index);
+                        self.kill_client();
+                    }
+                    unsafe {
+                        (self.xlib.XSetInputFocus)(
+                            self.display,
+                            xlib::PointerRoot as u64,
+                            xlib::RevertToPointerRoot,
+                            xlib::CurrentTime,
+                        );
+                        (self.xlib.XSync)(self.display, xlib::False);
+                    }
+                    std::process::exit(0);
+                }
                 Signal::KillClient => self.kill_client(),
                 Signal::ToggleFloating => {
                     if let Some(current_client) = self.current_client {

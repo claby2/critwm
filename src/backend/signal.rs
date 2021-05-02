@@ -9,6 +9,7 @@ pub enum Dir {
 
 #[derive(Debug, Clone)]
 pub enum Signal {
+    Quit,
     KillClient,
     ToggleFloating,
     SetLayout(usize),
