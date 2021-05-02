@@ -162,6 +162,9 @@ impl Backend {
         if let Some(signal) = SIGNAL_STACK.lock().unwrap().pop() {
             match signal {
                 Signal::Quit => {
+                    self.clients.iter().for_each(|client| unsafe {
+                        (self.xlib.XMapWindow)(self.display, client.window);
+                    });
                     unsafe {
                         (self.xlib.XSetInputFocus)(
                             self.display,
@@ -597,12 +600,12 @@ impl Backend {
                     .iter()
                     .filter(|window| {
                         let mut attrs: xlib::XWindowAttributes = unsafe { mem::zeroed() };
-                        unsafe {
-                            (self.xlib.XGetWindowAttributes)(self.display, **window, &mut attrs);
-                        }
-                        attrs.override_redirect == 0
-                            && (attrs.map_state == xlib::IsViewable
-                                || attrs.map_state == xlib::IsUnmapped)
+                        let status = unsafe {
+                            (self.xlib.XGetWindowAttributes)(self.display, **window, &mut attrs)
+                        };
+                        status != 0
+                            && attrs.override_redirect == 0
+                            && attrs.map_state == xlib::IsViewable
                     })
                     .collect();
             windows.iter().for_each(|window| self.add_window(**window));
