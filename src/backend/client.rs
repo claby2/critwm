@@ -1,25 +1,24 @@
 use crate::util::{XWindowDimension, XWindowPosition};
 use x11_dl::xlib;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct WindowGeometry {
     pub x: i32,
     pub y: i32,
     pub width: i32,
     pub height: i32,
     pub border_width: i32,
-    border_depth: i32,
 }
 
 impl WindowGeometry {
-    fn new(xlib: &xlib::Xlib, display: *mut xlib::Display, window: &xlib::Window) -> Self {
+    fn fetch(xlib: &xlib::Xlib, display: *mut xlib::Display, window: &xlib::Window) -> Self {
         let mut root: xlib::Window = 0;
         let mut x: XWindowPosition = 0;
         let mut y: XWindowPosition = 0;
         let mut width: XWindowDimension = 0;
         let mut height: XWindowDimension = 0;
         let mut border_width: XWindowDimension = 0;
-        let mut border_depth: XWindowDimension = 0;
+        let mut depth: XWindowDimension = 0;
         unsafe {
             (xlib.XGetGeometry)(
                 display,
@@ -30,7 +29,7 @@ impl WindowGeometry {
                 &mut width,
                 &mut height,
                 &mut border_width,
-                &mut border_depth,
+                &mut depth,
             )
         };
         Self {
@@ -39,7 +38,17 @@ impl WindowGeometry {
             width: width as i32,
             height: height as i32,
             border_width: border_width as i32,
-            border_depth: border_depth as i32,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn new(x: i32, y: i32, width: i32, height: i32, border_width: i32) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+            border_width,
         }
     }
 }
@@ -57,14 +66,14 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(
+    pub fn fetch(
         xlib: &xlib::Xlib,
         display: *mut xlib::Display,
         window: xlib::Window,
         monitor: usize,
         workspace: usize,
     ) -> Self {
-        let geometry = WindowGeometry::new(xlib, display, &window);
+        let geometry = WindowGeometry::fetch(xlib, display, &window);
         Self {
             geometry: geometry.clone(),
             old_geometry: geometry,
@@ -76,6 +85,32 @@ impl Client {
         }
     }
 
+    #[cfg(test)]
+    pub fn new(geometry: WindowGeometry, monitor: usize, workspace: usize) -> Self {
+        let old_geometry = geometry.clone();
+        Self {
+            geometry,
+            old_geometry,
+            window: 0,
+            monitor,
+            workspace,
+            fullscreen: false,
+            floating: false,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn fullscreen(mut self) -> Self {
+        self.fullscreen = true;
+        self
+    }
+
+    #[cfg(test)]
+    pub fn floating(mut self) -> Self {
+        self.floating = true;
+        self
+    }
+
     pub fn get_geometry(&self) -> &WindowGeometry {
         &self.geometry
     }
@@ -85,7 +120,7 @@ impl Client {
     }
 
     pub fn update_geometry(&mut self, xlib: &xlib::Xlib, display: *mut xlib::Display) {
-        self.geometry = WindowGeometry::new(xlib, display, &self.window);
+        self.geometry = WindowGeometry::fetch(xlib, display, &self.window);
     }
 
     pub fn toggle_fullscreen(&mut self) {

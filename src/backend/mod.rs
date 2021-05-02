@@ -476,7 +476,7 @@ impl Backend {
                                 | xlib::PropertyChangeMask,
                         );
                     };
-                    self.clients.push(Client::new(
+                    self.clients.push(Client::fetch(
                         &self.xlib,
                         self.display,
                         window,
