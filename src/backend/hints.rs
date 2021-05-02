@@ -45,9 +45,9 @@ impl Backend {
         let mut format_return = 0;
         let mut nitems_return = 0;
         let mut bytes_after_return = 0;
-        let mut prop_return: *mut u8 = unsafe { mem::zeroed() };
-        unsafe {
-            let status = (self.xlib.XGetWindowProperty)(
+        let mut prop_return = unsafe { mem::zeroed() };
+        let status = unsafe {
+            (self.xlib.XGetWindowProperty)(
                 self.display,
                 window,
                 prop,
@@ -60,13 +60,9 @@ impl Backend {
                 &mut nitems_return,
                 &mut bytes_after_return,
                 &mut prop_return,
-            );
-            if status == i32::from(xlib::Success) && !prop_return.is_null() {
-                let atom = *(prop_return as *const xlib::Atom);
-                return Some(atom);
-            }
-        }
-        None
+            )
+        };
+        Self::get_prop(status, prop_return)
     }
 
     fn set_prop_string(&self, atom: xlib::Atom, value: &str) {
@@ -103,5 +99,13 @@ impl Backend {
                 len,
             );
         };
+    }
+
+    fn get_prop(status: i32, prop_return: *mut u8) -> Option<xlib::Atom> {
+        if status == i32::from(xlib::Success) && !prop_return.is_null() {
+            Some(unsafe { *(prop_return as *const xlib::Atom) })
+        } else {
+            None
+        }
     }
 }

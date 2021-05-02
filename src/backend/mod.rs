@@ -88,6 +88,7 @@ impl Backend {
         backend.set_hints();
         backend.set_cursor(backend.cursor.norm);
         backend.fetch_monitors()?;
+        backend.scan();
         Ok(backend)
     }
 
@@ -161,10 +162,6 @@ impl Backend {
         if let Some(signal) = SIGNAL_STACK.lock().unwrap().pop() {
             match signal {
                 Signal::Quit => {
-                    for client_index in 0..self.clients.len() {
-                        self.current_client = Some(client_index);
-                        self.kill_client();
-                    }
                     unsafe {
                         (self.xlib.XSetInputFocus)(
                             self.display,
@@ -492,22 +489,7 @@ impl Backend {
                 if attrs.override_redirect == 0
                     && !self.clients.iter().any(|client| client.window == window)
                 {
-                    unsafe {
-                        (self.xlib.XSelectInput)(
-                            self.display,
-                            window,
-                            xlib::StructureNotifyMask
-                                | xlib::EnterWindowMask
-                                | xlib::PropertyChangeMask,
-                        );
-                    };
-                    self.clients.push(Client::fetch(
-                        &self.xlib,
-                        self.display,
-                        window,
-                        self.current_monitor,
-                        self.monitors[self.current_monitor].get_current_workspace(),
-                    ));
+                    self.add_window(window);
                     let index = self.clients.len() - 1;
                     self.set_focus(Some(index));
                     // Configure layout.
@@ -592,6 +574,68 @@ impl Backend {
             _ => {}
         }
         Ok(())
+    }
+
+    fn scan(&mut self) {
+        let mut root_return = 0;
+        let mut parent_return = 0;
+        let mut array: *mut xlib::Window = unsafe { std::mem::zeroed() };
+        let mut length = 0;
+        if unsafe {
+            (self.xlib.XQueryTree)(
+                self.display,
+                self.root,
+                &mut root_return,
+                &mut parent_return,
+                &mut array,
+                &mut length,
+            )
+        } != 0
+        {
+            let windows: Vec<&xlib::Window> =
+                unsafe { slice::from_raw_parts(array, length as usize) }
+                    .iter()
+                    .filter(|window| {
+                        let mut attrs: xlib::XWindowAttributes = unsafe { mem::zeroed() };
+                        unsafe {
+                            (self.xlib.XGetWindowAttributes)(self.display, **window, &mut attrs);
+                        }
+                        attrs.override_redirect == 0
+                            && (attrs.map_state == xlib::IsViewable
+                                || attrs.map_state == xlib::IsUnmapped)
+                    })
+                    .collect();
+            windows.iter().for_each(|window| self.add_window(**window));
+            self.arrange(
+                self.current_monitor,
+                self.monitors[self.current_monitor].get_current_workspace(),
+            );
+            self.set_focus(if !self.clients.is_empty() {
+                Some(0)
+            } else {
+                None
+            });
+            windows.iter().for_each(|window| unsafe {
+                (self.xlib.XMapWindow)(self.display, **window);
+            });
+        }
+    }
+
+    fn add_window(&mut self, window: xlib::Window) {
+        unsafe {
+            (self.xlib.XSelectInput)(
+                self.display,
+                window,
+                xlib::StructureNotifyMask | xlib::EnterWindowMask | xlib::PropertyChangeMask,
+            );
+        };
+        self.clients.push(Client::fetch(
+            &self.xlib,
+            self.display,
+            window,
+            self.current_monitor,
+            self.monitors[self.current_monitor].get_current_workspace(),
+        ));
     }
 
     // Return if client is visible in the current monitor in given workspace.
@@ -687,7 +731,7 @@ impl Backend {
             (self.xlib.XSetInputFocus)(
                 self.display,
                 new_focus,
-                xlib::RevertToParent,
+                xlib::RevertToPointerRoot,
                 xlib::CurrentTime,
             );
         }
