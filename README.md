@@ -24,11 +24,13 @@ Features:
 
 ## Configuration
 
-Configuration is done by editing the source code.
-Most configuration can be done by just editing the configuration file (`src/config.rs`);
-however, more advanced changes can be made by editing other files if needed.
+Configuring `critwm` is done by creating and editing the file:
+
+    ~/.config/critwm/config.rs
+
+If this file does not exist, [`src/config.def.rs`](./src/config.def.rs) will be used instead.
 
 ### Layouts
 
-`critwm` allows you to create a custom layout by adding a file to the layouts directory (`src/layouts/`).
-Each layout should, at the very least, implement a function with the same parameters and return type as `crate::layouts::Layout`.
+Custom layouts can be created by adding a file to the layouts directory [`src/layouts`](./src/layouts).
+Each layout should implement a function with the same parameters and return type as `crate::layouts::Layout`.
