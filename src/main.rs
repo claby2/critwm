@@ -22,7 +22,6 @@ use error::CritResult;
 use std::process;
 
 fn run() -> CritResult<()> {
-    info!("Started critwm");
     let mut backend = Backend::new()?;
     backend.grab_keys();
     backend.grab_buttons();
@@ -35,6 +34,7 @@ fn run() -> CritResult<()> {
 
 fn main() {
     env_logger::init();
+    info!("Started critwm");
     if cfg!(feature = "custom_config") {
         info!("Using custom configuration");
     } else {
