@@ -47,7 +47,6 @@ fn run() -> CritResult<()> {
         backend.handle_cursor();
         backend.handle_event()?;
     }
-    unsafe { (xlib.XCloseDisplay)(display) };
     Ok(())
 }
 

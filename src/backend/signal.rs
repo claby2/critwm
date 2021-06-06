@@ -56,7 +56,6 @@ impl Backend<'_> {
             (self.xlib.XDestroyWindow)(self.display, self.root);
             (self.xlib.XCloseDisplay)(self.display);
         }
-        std::process::exit(0);
     }
 
     pub fn kill_client(&self) {
