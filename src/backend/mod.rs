@@ -530,6 +530,9 @@ impl<'a> Backend<'a> {
         .iter()
         .enumerate()
         {
+            if self.clients[index].floating {
+                unsafe { (self.xlib.XRaiseWindow)(self.display, self.clients[index].window) };
+            }
             if self.clients[index].get_geometry() != geometry {
                 self.move_resize_client(
                     index,
