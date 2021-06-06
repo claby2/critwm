@@ -216,7 +216,9 @@ impl Backend<'_> {
     }
 
     fn cursor_warp(&self, window: &xlib::Window, x: i32, y: i32) {
-        unsafe { (self.xlib.XWarpPointer)(self.display, 0, *window, 0, 0, 0, 0, x, y) };
+        if config::CURSOR_WARP {
+            unsafe { (self.xlib.XWarpPointer)(self.display, 0, *window, 0, 0, 0, 0, x, y) };
+        }
     }
 }
 

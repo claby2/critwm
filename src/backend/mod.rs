@@ -23,6 +23,7 @@ pub struct Backend<'a> {
     root: xlib::Window,
     start: xlib::XButtonEvent,
     attrs: xlib::XWindowAttributes,
+    previous_mouse_position: (i32, i32),
     atoms: Atom,
     cursor: Cursor,
     key_map: HashMap<Key, Action>,
@@ -72,6 +73,7 @@ impl<'a> Backend<'a> {
             root,
             start: unsafe { mem::zeroed() },
             attrs: unsafe { mem::zeroed() },
+            previous_mouse_position: (0, 0),
             atoms,
             cursor,
             key_map: config::get_keymap(),
@@ -159,9 +161,10 @@ impl<'a> Backend<'a> {
                 &mut mask,
             );
         };
-        if !self.monitors[self.current_monitor]
-            .get_geometry()
-            .has_point(x, y)
+        if (x, y) != self.previous_mouse_position
+            && !self.monitors[self.current_monitor]
+                .get_geometry()
+                .has_point(x, y)
         {
             // While iterating, skip over checking the current monitor.
             if let Some(monitor_index) =
@@ -178,6 +181,7 @@ impl<'a> Backend<'a> {
                 }
             }
         }
+        self.previous_mouse_position = (x, y);
     }
 
     pub fn handle_event(&mut self) -> CritResult<()> {

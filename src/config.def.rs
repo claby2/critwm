@@ -12,6 +12,8 @@ const TAG_KEYS: [u32; WORKSPACE_COUNT] = [XK_1, XK_2, XK_3, XK_4, XK_5, XK_6, XK
 
 pub const GAP: i32 = 15;
 
+pub const CURSOR_WARP: bool = false;
+
 pub const MODKEY: ModMask = Mod4Mask;
 const TERMINAL: &str = "st";
 
