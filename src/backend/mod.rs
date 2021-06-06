@@ -174,16 +174,7 @@ impl<'a> Backend<'a> {
                 if child_return == 0 {
                     // Cursor has entered a new monitor but is not over any clients.
                     // Find a client to focus on.
-                    let workspace = self.monitors[self.current_monitor].get_current_workspace();
-                    if let Some(client_index) = self
-                        .clients
-                        .iter()
-                        .position(|client| self.is_visible(workspace, client))
-                    {
-                        self.set_focus(Some(client_index));
-                    } else {
-                        self.set_focus(None);
-                    }
+                    self.focus_current_monitor();
                 }
             }
         }
@@ -763,6 +754,19 @@ impl<'a> Backend<'a> {
                 self.current_monitor,
                 self.monitors[self.current_monitor].get_current_workspace(),
             );
+        }
+    }
+
+    fn focus_current_monitor(&mut self) {
+        let workspace = self.monitors[self.current_monitor].get_current_workspace();
+        if let Some(client_index) = self
+            .clients
+            .iter()
+            .position(|client| self.is_visible(workspace, client))
+        {
+            self.set_focus(Some(client_index));
+        } else {
+            self.set_focus(None);
         }
     }
 

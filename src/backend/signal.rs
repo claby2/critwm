@@ -17,6 +17,7 @@ pub enum Signal {
     SetLayout(usize),
     ChangeWorkspace(usize),
     MoveToWorkspace(usize),
+    FocusMon(Dir),
     FocusStack(Dir),
 }
 
@@ -39,6 +40,7 @@ impl Backend<'_> {
                 Signal::SetLayout(layout_index) => self.set_layout(layout_index),
                 Signal::ChangeWorkspace(new_workspace) => self.change_workspace(new_workspace)?,
                 Signal::MoveToWorkspace(new_workspace) => self.move_to_workspace(new_workspace),
+                Signal::FocusMon(direction) => self.focus_monitor(direction),
                 Signal::FocusStack(direction) => self.focus_stack(direction),
             }
         }
@@ -147,6 +149,41 @@ impl Backend<'_> {
         }
     }
 
+    pub fn focus_monitor(&mut self, direction: Dir) {
+        self.current_monitor = match direction {
+            Dir::Up => {
+                if self.current_monitor < self.monitors.len() - 1 {
+                    self.current_monitor + 1
+                } else {
+                    0
+                }
+            }
+            Dir::Down => {
+                if self.current_monitor > 0 {
+                    self.current_monitor - 1
+                } else {
+                    self.monitors.len() - 1
+                }
+            }
+        };
+        self.focus_current_monitor();
+        if let Some(current_client) = self.current_client {
+            let window_geometry = self.clients[current_client].get_geometry();
+            self.cursor_warp(
+                &self.clients[current_client].window,
+                window_geometry.width / 2,
+                window_geometry.height / 2,
+            );
+        } else {
+            let monitor_geometry = self.monitors[self.current_monitor].get_geometry();
+            self.cursor_warp(
+                &self.root,
+                monitor_geometry.x + (monitor_geometry.width / 2),
+                monitor_geometry.y + (monitor_geometry.height / 2),
+            );
+        }
+    }
+
     pub fn focus_stack(&mut self, direction: Dir) {
         if let Some(current_client) = self.current_client {
             let workspace = self.monitors[self.current_monitor].get_current_workspace();
@@ -168,8 +205,18 @@ impl Backend<'_> {
                     .find(|(_, client)| self.is_visible(workspace, client)),
             } {
                 self.set_focus(Some(index));
+                let geometry = self.clients[index].get_geometry();
+                self.cursor_warp(
+                    &self.clients[index].window,
+                    geometry.width / 2,
+                    geometry.height / 2,
+                );
             };
         }
+    }
+
+    fn cursor_warp(&self, window: &xlib::Window, x: i32, y: i32) {
+        unsafe { (self.xlib.XWarpPointer)(self.display, 0, *window, 0, 0, 0, 0, x, y) };
     }
 }
 

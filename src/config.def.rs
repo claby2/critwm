@@ -25,6 +25,8 @@ pub fn get_keymap() -> HashMap<Key, Action> {
         key!(MODKEY, XK_s, util::signal(Signal::ToggleFloating)),
         key!(MODKEY, XK_t, util::signal(Signal::SetLayout(0))),
         key!(MODKEY, XK_f, util::signal(Signal::SetLayout(1))),
+        key!(MODKEY, XK_comma, util::signal(Signal::FocusMon(Dir::Down))),
+        key!(MODKEY, XK_period, util::signal(Signal::FocusMon(Dir::Up))),
         key!(MODKEY | ShiftMask, XK_q, util::signal(Signal::Quit)),
     ];
     for (i, tag_key) in TAG_KEYS.iter().enumerate() {
