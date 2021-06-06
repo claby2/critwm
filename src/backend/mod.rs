@@ -541,7 +541,6 @@ impl<'a> Backend<'a> {
                     geometry.width,
                     geometry.height,
                 );
-                self.clients[index].update_geometry(&self.xlib, self.display);
             }
         }
     }
@@ -708,8 +707,10 @@ impl<'a> Backend<'a> {
             .iter()
             .position(|monitor| monitor.get_geometry().has_window(&geometry))
         {
-            client.monitor = monitor_index;
-            client.workspace = self.monitors[monitor_index].get_current_workspace();
+            if client.monitor != monitor_index {
+                client.monitor = monitor_index;
+                client.workspace = self.monitors[monitor_index].get_current_workspace();
+            }
         }
     }
 

@@ -134,17 +134,18 @@ impl Backend<'_> {
     pub fn move_to_workspace(&mut self, new_workspace: usize) {
         // Move currently focused client to given workspace.
         if let Some(current_client) = self.current_client {
-            let mut client = &mut self.clients[current_client];
-            if client.workspace != new_workspace {
-                client.workspace = new_workspace;
-                // Hide window as it has moved to another workspace.
-                unsafe { (self.xlib.XUnmapWindow)(self.display, client.window) };
-                // Arrange both the current workspace and the new workspace.
+            if self.clients[current_client].workspace != new_workspace {
+                self.clients[current_client].workspace = new_workspace;
+                unsafe {
+                    (self.xlib.XUnmapWindow)(self.display, self.clients[current_client].window)
+                };
+                // Arrange new workspace.
+                self.arrange(self.current_monitor, new_workspace);
+                // Arrange current workspace.
                 self.arrange(
                     self.current_monitor,
                     self.monitors[self.current_monitor].get_current_workspace(),
                 );
-                self.arrange(self.current_monitor, new_workspace);
             }
         }
     }
