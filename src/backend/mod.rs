@@ -6,18 +6,19 @@ pub mod signal;
 
 use crate::{
     config,
-    error::{CritError, CritResult},
+    error::CritResult,
     layouts::Layout,
     util::{Action, Cursor, Key, XCursor, XCursorShape},
 };
 use atom::Atom;
 use client::Client;
 use monitor::{Monitor, MonitorManager};
-use std::{collections::HashMap, mem, ptr, slice};
+use std::{collections::HashMap, mem, slice};
 use x11_dl::{xinerama, xlib};
 
-pub struct Backend {
-    xlib: xlib::Xlib,
+pub struct Backend<'a> {
+    xlib: &'a xlib::Xlib,
+    xinerama_xlib: &'a xinerama::Xlib,
     display: *mut xlib::Display,
     root: xlib::Window,
     start: xlib::XButtonEvent,
@@ -32,19 +33,15 @@ pub struct Backend {
     current_monitor: usize,
 }
 
-impl Backend {
+impl<'a> Backend<'a> {
     const POINTER_BUTTON_MASK: u32 =
         (xlib::PointerMotionMask | xlib::ButtonPressMask | xlib::ButtonReleaseMask) as u32;
 
-    pub fn new() -> CritResult<Self> {
-        // Open xlib.
-        let xlib = xlib::Xlib::open()?;
-        unsafe { (xlib.XSetErrorHandler)(Some(Self::xerror)) };
-        // Open display.
-        let display = unsafe { (xlib.XOpenDisplay)(ptr::null()) };
-        if display.is_null() {
-            return Err(CritError::Other("Display is null.".to_owned()));
-        }
+    pub fn new(
+        xlib: &'a xlib::Xlib,
+        xinerama_xlib: &'a xinerama::Xlib,
+        display: *mut xlib::Display,
+    ) -> CritResult<Self> {
         // Get root window.
         let root = unsafe { (xlib.XDefaultRootWindow)(display) };
         unsafe {
@@ -68,8 +65,9 @@ impl Backend {
             create_cursor(Cursor::MOV),
         );
         // Construct backend.
-        let mut backend = Self {
+        Ok(Self {
             xlib,
+            xinerama_xlib,
             display,
             root,
             start: unsafe { mem::zeroed() },
@@ -83,12 +81,15 @@ impl Backend {
             monitors: MonitorManager::new(),
             layouts: config::get_layouts(),
             current_monitor: 0,
-        };
-        backend.set_hints();
-        backend.set_cursor(backend.cursor.norm);
-        backend.fetch_monitors()?;
-        backend.scan();
-        Ok(backend)
+        })
+    }
+
+    pub fn initialize(&mut self) -> CritResult<()> {
+        self.set_hints();
+        self.set_cursor(self.cursor.norm);
+        self.fetch_monitors()?;
+        self.scan();
+        Ok(())
     }
 
     pub fn grab_keys(&self) {
@@ -645,20 +646,16 @@ impl Backend {
     }
 
     fn fetch_monitors(&mut self) -> CritResult<()> {
-        let xlib = xinerama::Xlib::open()?;
-        if unsafe { (xlib.XineramaIsActive)(self.display) } > 0 {
-            let mut screen_count = 0;
-            let raw_infos = unsafe { (xlib.XineramaQueryScreens)(self.display, &mut screen_count) };
-            let xinerama_infos: &[xinerama::XineramaScreenInfo] =
-                unsafe { slice::from_raw_parts(raw_infos, screen_count as usize) };
-            self.monitors = xinerama_infos
-                .iter()
-                .map(|info| Monitor::new(&self.layouts[0].1, &info))
-                .collect();
-            Ok(())
-        } else {
-            Err(CritError::Other("Xinerama is not active.".to_owned()))
-        }
+        let mut screen_count = 0;
+        let raw_infos =
+            unsafe { (self.xinerama_xlib.XineramaQueryScreens)(self.display, &mut screen_count) };
+        let xinerama_infos: &[xinerama::XineramaScreenInfo] =
+            unsafe { slice::from_raw_parts(raw_infos, screen_count as usize) };
+        self.monitors = xinerama_infos
+            .iter()
+            .map(|info| Monitor::new(&self.layouts[0].1, &info))
+            .collect();
+        Ok(())
     }
 
     fn send_xevent_atom(&self, window: xlib::Window, atom: xlib::Atom) -> bool {
@@ -686,7 +683,7 @@ impl Backend {
         exists
     }
 
-    extern "C" fn xerror(_: *mut xlib::Display, e: *mut xlib::XErrorEvent) -> i32 {
+    pub extern "C" fn xerror(_: *mut xlib::Display, e: *mut xlib::XErrorEvent) -> i32 {
         let err = unsafe { *e };
         // Ignore BadWindow error code.
         if err.error_code == xlib::BadWindow {

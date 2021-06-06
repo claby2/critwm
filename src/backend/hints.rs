@@ -2,7 +2,7 @@ use crate::backend::Backend;
 use std::{ffi::CString, mem};
 use x11_dl::xlib;
 
-impl Backend {
+impl Backend<'_> {
     pub fn set_hints(&self) {
         // Set WM name.
         let wm_name = "critwm";

@@ -18,18 +18,37 @@ mod config {
 }
 
 use backend::Backend;
-use error::CritResult;
-use std::process;
+use error::{CritError, CritResult};
+use std::{process, ptr};
+use x11_dl::{xinerama, xlib};
 
 fn run() -> CritResult<()> {
-    let mut backend = Backend::new()?;
+    // Open xlib.
+    let xlib = xlib::Xlib::open()?;
+    unsafe { (xlib.XSetErrorHandler)(Some(Backend::xerror)) };
+    // Open display.
+    let display = unsafe { (xlib.XOpenDisplay)(ptr::null()) };
+    if display.is_null() {
+        return Err(CritError::Other("Display is null.".to_owned()));
+    }
+    let xinerama_xlib = xinerama::Xlib::open()?;
+    if unsafe { (xinerama_xlib.XineramaIsActive)(display) } == 0 {
+        return Err(CritError::Other("Xinerama is not active.".to_owned()));
+    }
+    let mut backend = Backend::new(&xlib, &xinerama_xlib, display)?;
+    backend.initialize()?;
     backend.grab_keys();
     backend.grab_buttons();
     loop {
-        backend.handle_signal()?;
+        if backend.handle_signal()? {
+            // Quit signal has been handled.
+            break;
+        }
         backend.handle_cursor();
         backend.handle_event()?;
     }
+    unsafe { (xlib.XCloseDisplay)(display) };
+    Ok(())
 }
 
 fn main() {

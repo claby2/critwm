@@ -20,12 +20,16 @@ pub enum Signal {
     FocusStack(Dir),
 }
 
-impl Backend {
-    pub fn handle_signal(&mut self) -> CritResult<()> {
+impl Backend<'_> {
+    // Returns true if quit signal is handled.
+    pub fn handle_signal(&mut self) -> CritResult<bool> {
         if let Some(signal) = SIGNAL_STACK.lock().unwrap().pop() {
             info!("Received signal: {:?}", signal);
             match signal {
-                Signal::Quit => self.quit(),
+                Signal::Quit => {
+                    self.quit();
+                    return Ok(true);
+                }
                 Signal::KillClient => self.kill_client(),
                 Signal::ToggleFloating => self.toggle_floating(),
                 Signal::SetLayout(layout_index) => self.set_layout(layout_index),
@@ -34,7 +38,7 @@ impl Backend {
                 Signal::FocusStack(direction) => self.focus_stack(direction),
             }
         }
-        Ok(())
+        Ok(false)
     }
 
     pub fn quit(&mut self) {
@@ -49,6 +53,8 @@ impl Backend {
                 xlib::CurrentTime,
             );
             (self.xlib.XSync)(self.display, xlib::False);
+            (self.xlib.XDestroyWindow)(self.display, self.root);
+            (self.xlib.XCloseDisplay)(self.display);
         }
         std::process::exit(0);
     }
