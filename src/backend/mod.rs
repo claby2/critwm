@@ -499,26 +499,15 @@ impl<'a> Backend<'a> {
             );
         };
         let workspace = self.monitors[self.current_monitor].get_current_workspace();
-        let mut client = Client::fetch(
+        self.clients.push(Client::fetch(
             &self.xlib,
             self.display,
             window,
             self.current_monitor,
             workspace,
-        );
-        let mut changes: xlib::XWindowChanges = unsafe { mem::zeroed() };
-        changes.border_width = config::BORDER;
-        client.get_geometry_mut().border_width = config::BORDER;
-        unsafe {
-            (self.xlib.XConfigureWindow)(
-                self.display,
-                window,
-                xlib::CWBorderWidth as u32,
-                &mut changes,
-            );
-            (self.xlib.XSetWindowBorder)(self.display, window, config::BORDER_NORMAL_COLOR);
-        }
-        self.clients.push(client);
+        ));
+        self.set_border(self.clients.len() - 1, config::BORDER);
+        unsafe { (self.xlib.XSetWindowBorder)(self.display, window, config::BORDER_NORMAL_COLOR) };
     }
 
     // Return if client is visible in the current monitor in given workspace.
@@ -542,30 +531,29 @@ impl<'a> Backend<'a> {
         .enumerate()
         {
             if self.clients[index].get_geometry() != geometry {
-                unsafe {
-                    (self.xlib.XMoveResizeWindow)(
-                        self.display,
-                        self.clients[index].window,
-                        geometry.x,
-                        geometry.y,
-                        geometry.width as u32,
-                        geometry.height as u32,
-                    )
-                };
+                self.move_resize_client(
+                    index,
+                    geometry.x,
+                    geometry.y,
+                    geometry.width,
+                    geometry.height,
+                );
                 self.clients[index].update_geometry(&self.xlib, self.display);
             }
         }
     }
 
     fn move_resize_client(&mut self, index: usize, x: i32, y: i32, width: i32, height: i32) {
+        let border = self.clients[index].get_geometry().border_width;
+        self.set_border(index, border);
         unsafe {
             (self.xlib.XMoveResizeWindow)(
                 self.display,
                 self.clients[index].window,
                 x,
                 y,
-                width as u32,
-                height as u32,
+                (width - border * 2) as u32,
+                (height - border * 2) as u32,
             )
         };
         self.set_client_monitor(index);
@@ -577,12 +565,14 @@ impl<'a> Backend<'a> {
     }
 
     fn resize_client(&mut self, index: usize, width: i32, height: i32) {
+        let border = self.clients[index].get_geometry().border_width;
+        self.set_border(index, border);
         unsafe {
             (self.xlib.XResizeWindow)(
                 self.display,
                 self.clients[index].window,
-                width as u32,
-                height as u32,
+                (width - border * 2) as u32,
+                (height - border * 2) as u32,
             )
         };
         self.set_client_monitor(index);
@@ -753,6 +743,20 @@ impl<'a> Backend<'a> {
         }
     }
 
+    fn set_border(&mut self, index: usize, width: i32) {
+        let mut changes: xlib::XWindowChanges = unsafe { mem::zeroed() };
+        changes.border_width = width;
+        self.clients[index].get_geometry_mut().border_width = width;
+        unsafe {
+            (self.xlib.XConfigureWindow)(
+                self.display,
+                self.clients[index].window,
+                xlib::CWBorderWidth as u32,
+                &mut changes,
+            );
+        }
+    }
+
     fn toggle_fullscreen(&mut self, index: usize) {
         // Toggle client fullscreen state.
         self.clients[index].toggle_fullscreen();
@@ -762,6 +766,7 @@ impl<'a> Backend<'a> {
                 self.clients[index].window,
                 self.atoms.net_wm_state_fullscreen,
             );
+            self.clients[index].get_geometry_mut().border_width = 0;
             self.move_resize_client(
                 index,
                 self.monitors[self.current_monitor].get_x(),
@@ -775,6 +780,7 @@ impl<'a> Backend<'a> {
             self.set_window_state(self.clients[index].window, 0);
             let client = self.clients[index].clone();
             let old_geometry = client.get_old_geometry();
+            self.clients[index].get_geometry_mut().border_width = old_geometry.border_width;
             // Restore old geometry.
             self.move_resize_client(
                 index,
