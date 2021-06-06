@@ -9,6 +9,7 @@ pub struct Atom {
     pub net_supporting_wm_check: xlib::Atom,
     pub net_supported: xlib::Atom,
     pub net_wm_window_type: xlib::Atom,
+    pub net_wm_window_type_dialog: xlib::Atom,
     pub net_wm_state: xlib::Atom,
     pub net_wm_state_fullscreen: xlib::Atom,
 }
@@ -22,6 +23,7 @@ impl Atom {
             net_supporting_wm_check: Self::get_atom(xlib, display, "_NET_SUPPORTING_WM_CHECK"),
             net_supported: Self::get_atom(xlib, display, "_NET_SUPPORTED"),
             net_wm_window_type: Self::get_atom(xlib, display, "_NET_WM_WINDOW_TYPE"),
+            net_wm_window_type_dialog: Self::get_atom(xlib, display, "_NET_WM_WINDOW_TYPE_DIALOG"),
             net_wm_state: Self::get_atom(xlib, display, "_NET_WM_STATE"),
             net_wm_state_fullscreen: Self::get_atom(xlib, display, "_NET_WM_STATE_FULLSCREEN"),
         }
@@ -33,6 +35,7 @@ impl Atom {
             self.net_supporting_wm_check,
             self.net_supported,
             self.net_wm_window_type,
+            self.net_wm_window_type_dialog,
             self.net_wm_state,
             self.net_wm_state_fullscreen,
         ]

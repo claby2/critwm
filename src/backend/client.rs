@@ -8,6 +8,20 @@ pub struct WindowGeometry {
     pub width: i32,
     pub height: i32,
     pub border_width: i32,
+
+    // Hints.
+    pub base_width: i32,
+    pub base_height: i32,
+    pub max_width: i32,
+    pub max_height: i32,
+    pub min_width: i32,
+    pub min_height: i32,
+    // Program specified resize increments.
+    pub inc_width: i32,
+    pub inc_height: i32,
+    // Program specified min and max aspect ratios.
+    pub max_aspect: f32,
+    pub min_aspect: f32,
 }
 
 impl WindowGeometry {
@@ -38,6 +52,7 @@ impl WindowGeometry {
             width: width as i32,
             height: height as i32,
             border_width: border_width as i32,
+            ..Default::default()
         }
     }
 
@@ -49,6 +64,7 @@ impl WindowGeometry {
             width,
             height,
             border_width,
+            ..Default::default()
         }
     }
 }
@@ -113,6 +129,10 @@ impl Client {
 
     pub fn get_geometry(&self) -> &WindowGeometry {
         &self.geometry
+    }
+
+    pub fn get_geometry_mut(&mut self) -> &mut WindowGeometry {
+        &mut self.geometry
     }
 
     pub fn get_old_geometry(&self) -> &WindowGeometry {

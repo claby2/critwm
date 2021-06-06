@@ -31,7 +31,11 @@ impl Backend<'_> {
                     return Ok(true);
                 }
                 Signal::KillClient => self.kill_client(),
-                Signal::ToggleFloating => self.toggle_floating(),
+                Signal::ToggleFloating => {
+                    if let Some(current_client) = self.current_client {
+                        self.toggle_floating(current_client);
+                    }
+                }
                 Signal::SetLayout(layout_index) => self.set_layout(layout_index),
                 Signal::ChangeWorkspace(new_workspace) => self.change_workspace(new_workspace)?,
                 Signal::MoveToWorkspace(new_workspace) => self.move_to_workspace(new_workspace),
@@ -78,15 +82,13 @@ impl Backend<'_> {
         }
     }
 
-    pub fn toggle_floating(&mut self) {
-        if let Some(current_client) = self.current_client {
-            self.clients[current_client].floating = !self.clients[current_client].floating;
-            unsafe { (self.xlib.XRaiseWindow)(self.display, self.clients[current_client].window) };
-            self.arrange(
-                self.current_monitor,
-                self.monitors[self.current_monitor].get_current_workspace(),
-            );
-        }
+    pub fn toggle_floating(&mut self, index: usize) {
+        self.clients[index].floating = !self.clients[index].floating;
+        unsafe { (self.xlib.XRaiseWindow)(self.display, self.clients[index].window) };
+        self.arrange(
+            self.current_monitor,
+            self.monitors[self.current_monitor].get_current_workspace(),
+        );
     }
 
     pub fn set_layout(&mut self, layout_index: usize) {

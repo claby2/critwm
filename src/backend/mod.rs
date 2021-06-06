@@ -13,7 +13,7 @@ use crate::{
 use atom::Atom;
 use client::Client;
 use monitor::{Monitor, MonitorManager};
-use std::{collections::HashMap, mem, slice};
+use std::{cmp, collections::HashMap, mem, slice};
 use x11_dl::{xinerama, xlib};
 
 pub struct Backend<'a> {
@@ -358,7 +358,8 @@ impl<'a> Backend<'a> {
                 {
                     self.add_window(window);
                     let index = self.clients.len() - 1;
-                    // Configure layout.
+                    // Update the window type as window may request to be floating and would therefore be flagged to not be arranged.
+                    self.update_window_type(index);
                     self.arrange(
                         self.current_monitor,
                         self.monitors[self.current_monitor].get_current_workspace(),
@@ -427,16 +428,19 @@ impl<'a> Backend<'a> {
                 }
             }
             xlib::PropertyNotify => {
-                if unsafe { event.property.atom } == self.atoms.net_wm_window_type {
-                    if let Some(current_client) = self.current_client {
-                        if let Some(state) = self.get_atom_prop(
-                            self.clients[current_client].window,
-                            self.atoms.net_wm_state,
-                        ) {
-                            if state == self.atoms.net_wm_state_fullscreen {
-                                self.toggle_fullscreen(current_client);
-                            }
-                        }
+                let property_event = xlib::XPropertyEvent::from(event);
+                if let Some(client_index) = self
+                    .clients
+                    .iter()
+                    .position(|client| client.window == property_event.window)
+                {
+                    if property_event.atom == xlib::XA_WM_NORMAL_HINTS {
+                        self.update_size_hints(client_index);
+                        let (width, height) = self.apply_size_hints(client_index);
+                        self.clients[client_index].floating = true;
+                        self.resize_client(client_index, width, height);
+                    } else if property_event.atom == self.atoms.net_wm_window_type {
+                        self.update_window_type(client_index);
                     }
                 }
             }
@@ -574,6 +578,123 @@ impl<'a> Backend<'a> {
             )
         };
         self.set_client_monitor(index);
+    }
+
+    fn update_size_hints(&mut self, index: usize) {
+        let mut supplied = 0;
+        let mut size: xlib::XSizeHints = unsafe { mem::zeroed() };
+        let client = &mut self.clients[index];
+        if unsafe {
+            (self.xlib.XGetWMNormalHints)(self.display, client.window, &mut size, &mut supplied)
+        } == 0
+        {
+            size.flags = xlib::PSize;
+        }
+        let geometry = client.get_geometry_mut();
+        // Update base width and height.
+        if size.flags & xlib::PBaseSize != 0 {
+            geometry.base_width = size.base_width;
+            geometry.base_height = size.base_height;
+        } else if size.flags & xlib::PMinSize != 0 {
+            geometry.base_width = size.min_width;
+            geometry.base_height = size.min_height;
+        } else {
+            geometry.base_width = 0;
+            geometry.base_height = 0;
+        }
+        // Update inc width and height.
+        if size.flags & xlib::PResizeInc != 0 {
+            geometry.inc_width = size.width_inc;
+            geometry.inc_height = size.height_inc;
+        } else {
+            geometry.inc_width = 0;
+            geometry.inc_height = 0;
+        }
+        // Update max width and height.
+        if size.flags & xlib::PMaxSize != 0 {
+            geometry.max_width = size.max_width;
+            geometry.max_height = size.max_height;
+        } else {
+            geometry.max_width = 0;
+            geometry.max_height = 0;
+        }
+        if size.flags & xlib::PMinSize != 0 {
+            geometry.min_width = size.min_width;
+            geometry.min_height = size.min_height;
+        } else if size.flags & xlib::PBaseSize != 0 {
+            geometry.min_width = size.base_width;
+            geometry.min_height = size.base_height;
+        } else {
+            geometry.min_width = 0;
+            geometry.min_height = 0;
+        }
+        if size.flags & xlib::PAspect != 0 {
+            geometry.max_aspect = (size.max_aspect.x / size.max_aspect.y) as f32;
+            geometry.min_aspect = (size.min_aspect.y / size.min_aspect.x) as f32;
+        } else {
+            geometry.max_aspect = 0.0;
+            geometry.min_aspect = 0.0;
+        }
+    }
+
+    fn apply_size_hints(&self, index: usize) -> (i32, i32) {
+        let geometry = self.clients[index].get_geometry();
+        let (mut width, mut height) = (
+            cmp::max(geometry.width, geometry.base_width),
+            cmp::max(geometry.height, geometry.base_height),
+        );
+        // height = cmp::max(height, geometry.base_height);
+        // width = cmp::max(width, geometry.base_width);
+        let base_is_min = geometry.base_width == geometry.min_width
+            && geometry.base_height == geometry.min_height;
+        if !base_is_min {
+            // Remove base dimensions.
+            width -= geometry.base_width;
+            height -= geometry.base_height;
+        }
+        // Aspect limits.
+        if geometry.min_aspect > 0.0 && geometry.max_aspect > 0.0 {
+            if geometry.max_aspect < (width / height) as f32 {
+                width = (height as f32 * geometry.max_aspect + 0.5) as i32;
+            } else if geometry.min_aspect < (height / width) as f32 {
+                height = (width as f32 * geometry.min_aspect + 0.5) as i32;
+            }
+        }
+        if base_is_min {
+            width -= geometry.base_width;
+            height -= geometry.base_height;
+        }
+        if geometry.inc_width != 0 {
+            width -= width % geometry.inc_width;
+        }
+        if geometry.inc_height != 0 {
+            height -= height % geometry.inc_height;
+        }
+        width = cmp::max(width + geometry.base_width, geometry.min_width);
+        height = cmp::max(height + height, geometry.min_height);
+        if geometry.max_width != 0 {
+            width = cmp::min(width, geometry.max_width);
+        }
+        if geometry.max_height != 0 {
+            height = cmp::min(height, geometry.max_height);
+        }
+        (width, height)
+    }
+
+    fn update_window_type(&mut self, index: usize) {
+        if let Some(state) = self.get_atom_prop(self.clients[index].window, self.atoms.net_wm_state)
+        {
+            if state == self.atoms.net_wm_state_fullscreen {
+                self.toggle_fullscreen(index);
+            }
+        }
+        if let Some(window_type) =
+            self.get_atom_prop(self.clients[index].window, self.atoms.net_wm_window_type)
+        {
+            if window_type == self.atoms.net_wm_window_type_dialog {
+                self.clients[index].floating = true;
+            }
+        }
     }
 
     fn set_client_monitor(&mut self, index: usize) {
