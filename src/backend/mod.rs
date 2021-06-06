@@ -499,13 +499,26 @@ impl<'a> Backend<'a> {
             );
         };
         let workspace = self.monitors[self.current_monitor].get_current_workspace();
-        self.clients.push(Client::fetch(
+        let mut client = Client::fetch(
             &self.xlib,
             self.display,
             window,
             self.current_monitor,
             workspace,
-        ));
+        );
+        let mut changes: xlib::XWindowChanges = unsafe { mem::zeroed() };
+        changes.border_width = config::BORDER;
+        client.get_geometry_mut().border_width = config::BORDER;
+        unsafe {
+            (self.xlib.XConfigureWindow)(
+                self.display,
+                window,
+                xlib::CWBorderWidth as u32,
+                &mut changes,
+            );
+            (self.xlib.XSetWindowBorder)(self.display, window, config::BORDER_NORMAL_COLOR);
+        }
+        self.clients.push(client);
     }
 
     // Return if client is visible in the current monitor in given workspace.
@@ -709,6 +722,11 @@ impl<'a> Backend<'a> {
 
     // Set new input focus. If index is None, set focus to root.
     fn set_focus(&mut self, index: Option<usize>) {
+        if let Some(current_client) = self.current_client {
+            if current_client < self.clients.len() {
+                self.unfocus(current_client);
+            }
+        }
         self.current_client = index;
         let new_focus = match index {
             Some(index) => self.clients[index].window,
@@ -720,6 +738,17 @@ impl<'a> Backend<'a> {
                 new_focus,
                 xlib::RevertToPointerRoot,
                 xlib::CurrentTime,
+            );
+            (self.xlib.XSetWindowBorder)(self.display, new_focus, config::BORDER_FOCUSED_COLOR);
+        }
+    }
+
+    fn unfocus(&mut self, index: usize) {
+        unsafe {
+            (self.xlib.XSetWindowBorder)(
+                self.display,
+                self.clients[index].window,
+                config::BORDER_NORMAL_COLOR,
             );
         }
     }
