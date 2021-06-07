@@ -351,18 +351,15 @@ impl<'a> Backend<'a> {
                 if attrs.override_redirect == 0
                     && !self.clients.iter().any(|client| client.window == window)
                 {
+                    unsafe {
+                        (self.xlib.XMapWindow)(self.display, window);
+                    }
                     self.add_window(window);
-                    let index = self.clients.len() - 1;
-                    // Update the window type as window may request to be floating and would therefore be flagged to not be arranged.
-                    self.update_window_type(index);
                     self.arrange(
                         self.current_monitor,
                         self.monitors[self.current_monitor].get_current_workspace(),
                     );
-                    unsafe {
-                        (self.xlib.XMapWindow)(self.display, window);
-                    }
-                    self.set_focus(Some(index));
+                    self.set_focus(Some(self.clients.len() - 1));
                 }
             }
             xlib::UnmapNotify => {
@@ -506,13 +503,15 @@ impl<'a> Backend<'a> {
             self.current_monitor,
             workspace,
         ));
-        self.set_border(self.clients.len() - 1, config::BORDER);
+        let index = self.clients.len() - 1;
+        self.update_window_type(index);
+        self.set_border(index, config::BORDER);
         unsafe { (self.xlib.XSetWindowBorder)(self.display, window, config::BORDER_NORMAL_COLOR) };
     }
 
     // Return if client is visible in the current monitor in given workspace.
     fn is_visible(&self, workspace: usize, client: &Client) -> bool {
-        client.monitor == self.current_monitor && client.workspace == workspace
+        client.monitor == self.current_monitor && client.workspace == workspace && !client.dock
     }
 
     fn set_cursor(&self, cursor: XCursor) {
@@ -691,8 +690,13 @@ impl<'a> Backend<'a> {
         if let Some(window_type) =
             self.get_atom_prop(self.clients[index].window, self.atoms.net_wm_window_type)
         {
-            if window_type == self.atoms.net_wm_window_type_dialog {
+            let dialog = window_type == self.atoms.net_wm_window_type_dialog;
+            let dock = window_type == self.atoms.net_wm_window_type_dock;
+            if dialog || dock {
                 self.clients[index].floating = true;
+                if dock {
+                    self.clients[index].dock = true;
+                }
             }
         }
     }
@@ -721,11 +725,18 @@ impl<'a> Backend<'a> {
                 self.unfocus(current_client);
             }
         }
-        self.current_client = index;
         let new_focus = match index {
-            Some(index) => self.clients[index].window,
+            Some(index) => {
+                let client = &self.clients[index];
+                if client.dock {
+                    // Windows of dock type should not be focusable.
+                    return;
+                };
+                client.window
+            }
             None => self.root,
         };
+        self.current_client = index;
         unsafe {
             (self.xlib.XSetInputFocus)(
                 self.display,
@@ -748,6 +759,10 @@ impl<'a> Backend<'a> {
     }
 
     fn set_border(&mut self, index: usize, width: i32) {
+        if self.clients[index].dock {
+            // Do not set border for window's with type dock.
+            return;
+        }
         let mut changes: xlib::XWindowChanges = unsafe { mem::zeroed() };
         changes.border_width = width;
         self.clients[index].get_geometry_mut().border_width = width;

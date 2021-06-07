@@ -80,6 +80,8 @@ pub struct Client {
     pub workspace: usize,
     pub fullscreen: bool,
     pub floating: bool,
+    // Indicates if window's type is _NET_WM_WINDOW_TYPE_DOCK.
+    pub dock: bool,
 }
 
 impl Client {
@@ -99,6 +101,7 @@ impl Client {
             workspace,
             fullscreen: false,
             floating: false,
+            dock: false,
         }
     }
 
@@ -113,6 +116,7 @@ impl Client {
             workspace,
             fullscreen: false,
             floating: false,
+            dock: false,
         }
     }
 
