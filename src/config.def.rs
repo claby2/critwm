@@ -51,10 +51,10 @@ pub fn get_keymap() -> HashMap<Key, Action> {
     keymap.into_iter().collect::<HashMap<Key, Action>>()
 }
 
-pub fn get_layouts() -> Vec<(String, Box<Layout>)> {
+pub fn get_layouts() -> Vec<Layout> {
     vec![
         // First entry is default.
-        (String::from("[]="), Box::new(layouts::tile::tile)),
-        (String::from("><>"), Box::new(layouts::float::float)),
+        Layout::new("[]=", layouts::tile::tile),
+        Layout::new("><>", layouts::float::float),
     ]
 }

@@ -94,7 +94,7 @@ impl Backend<'_> {
     }
 
     pub fn set_layout(&mut self, layout_index: usize) {
-        self.monitors[self.current_monitor].set_layout(&self.layouts[layout_index].1);
+        self.monitors[self.current_monitor].set_layout(&self.layouts[layout_index]);
         // Ensure that all clients in current monitor are not floating.
         for client in self.clients.iter_mut() {
             if client.monitor == self.current_monitor {

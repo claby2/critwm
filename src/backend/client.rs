@@ -1,7 +1,8 @@
 use crate::util::{XWindowDimension, XWindowPosition};
+use serde::Serialize;
 use x11_dl::xlib;
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize)]
 pub struct WindowGeometry {
     pub x: i32,
     pub y: i32,
@@ -69,7 +70,7 @@ impl WindowGeometry {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Client {
     geometry: WindowGeometry,
     // old_geometry stores the geometry of the window before fullscreen was toggled.

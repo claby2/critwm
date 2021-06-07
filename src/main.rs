@@ -1,28 +1,15 @@
 #[macro_use]
 extern crate log;
 
-#[macro_use]
-mod util;
-mod backend;
-mod error;
-mod layouts;
-
-mod config {
-    // Parse configuration from user's filesystem if custom_config.
-    #[cfg(feature = "custom_config")]
-    include!(concat!(env!("HOME"), "/.config/critwm/config.rs"));
-
-    // Fallback to default config in src if not custom_config.
-    #[cfg(not(feature = "custom_config"))]
-    include!("config.def.rs");
-}
-
-use backend::Backend;
-use error::{CritError, CritResult};
-use std::{process, ptr};
+use critwm::{
+    backend::Backend,
+    error::{CritError, CritResult},
+    socket::{self, StateSocket},
+};
+use std::{path::PathBuf, process, ptr};
 use x11_dl::{xinerama, xlib};
 
-fn run() -> CritResult<()> {
+async fn start() -> CritResult<()> {
     // Open xlib.
     let xlib = xlib::Xlib::open()?;
     unsafe { (xlib.XSetErrorHandler)(Some(Backend::xerror)) };
@@ -35,10 +22,17 @@ fn run() -> CritResult<()> {
     if unsafe { (xinerama_xlib.XineramaIsActive)(display) } == 0 {
         return Err(CritError::Other("Xinerama is not active.".to_owned()));
     }
-    let mut backend = Backend::new(&xlib, &xinerama_xlib, display)?;
+    let mut backend = unsafe { Backend::new(&xlib, &xinerama_xlib, display)? };
     backend.initialize()?;
     backend.grab_keys();
     backend.grab_buttons();
+    run(&mut backend).await?;
+    Ok(())
+}
+
+async fn run(backend: &mut Backend<'_>) -> CritResult<()> {
+    let mut state_socket = StateSocket::new(PathBuf::from(socket::SOCKET_PATH));
+    state_socket.listen().await?;
     loop {
         if backend.handle_signal()? {
             // Quit signal has been handled.
@@ -46,11 +40,14 @@ fn run() -> CritResult<()> {
         }
         backend.handle_cursor();
         backend.handle_event()?;
+        state_socket.write(&backend).await?;
     }
+    state_socket.close().await?;
     Ok(())
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     env_logger::init();
     info!("Started critwm");
     if cfg!(feature = "custom_config") {
@@ -58,10 +55,13 @@ fn main() {
     } else {
         info!("Using default configuration");
     }
-    match run() {
-        Ok(()) => process::exit(0),
+    match start().await {
+        Ok(_) => {
+            info!("Closed critwm successfully");
+            process::exit(0);
+        }
         Err(e) => {
-            error!("{}", e);
+            error!("{:?}", e);
             process::exit(1)
         }
     }

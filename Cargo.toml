@@ -4,6 +4,10 @@ version = "0.1.0"
 authors = ["Edward Wibowo <wibow9770@gmail.com>"]
 edition = "2018"
 
+[lib]
+name = "critwm"
+path = "src/lib.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -11,3 +15,7 @@ x11-dl = "2.18.5"
 lazy_static = "1.4.0"
 log = "0.4.14"
 env_logger = "0.8.3"
+tokio = { version = "1.6.1", features = ["sync", "rt", "io-util", "rt-multi-thread", "fs", "macros", "net"] }
+serde = { version = "1.0.126", features = ["derive", "rc"] }
+serde_json = "1.0.64"
+clap = "2.33.3"

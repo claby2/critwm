@@ -1,3 +1,4 @@
+pub mod api;
 mod atom;
 pub mod client;
 mod hints;
@@ -12,7 +13,7 @@ use crate::{
 };
 use atom::Atom;
 use client::Client;
-use monitor::{Monitor, MonitorManager};
+use monitor::Monitor;
 use std::{cmp, collections::HashMap, mem, slice};
 use x11_dl::{xinerama, xlib};
 
@@ -29,8 +30,8 @@ pub struct Backend<'a> {
     key_map: HashMap<Key, Action>,
     clients: Vec<Client>,
     current_client: Option<usize>,
-    monitors: MonitorManager,
-    layouts: Vec<(String, Box<Layout>)>,
+    monitors: Vec<Monitor<{ config::WORKSPACE_COUNT }>>,
+    layouts: Vec<Layout>,
     current_monitor: usize,
 }
 
@@ -38,22 +39,21 @@ impl<'a> Backend<'a> {
     const POINTER_BUTTON_MASK: u32 =
         (xlib::PointerMotionMask | xlib::ButtonPressMask | xlib::ButtonReleaseMask) as u32;
 
-    pub fn new(
+    /// # Safety
+    ///
+    /// This function should not be called before x11 has started.
+    pub unsafe fn new(
         xlib: &'a xlib::Xlib,
         xinerama_xlib: &'a xinerama::Xlib,
         display: *mut xlib::Display,
     ) -> CritResult<Self> {
         // Get root window.
-        let root = unsafe { (xlib.XDefaultRootWindow)(display) };
-        unsafe {
-            (xlib.XSelectInput)(
-                display,
-                root,
-                xlib::SubstructureRedirectMask
-                    | xlib::StructureNotifyMask
-                    | xlib::PointerMotionMask,
-            )
-        };
+        let root = (xlib.XDefaultRootWindow)(display);
+        (xlib.XSelectInput)(
+            display,
+            root,
+            xlib::SubstructureRedirectMask | xlib::StructureNotifyMask | xlib::PointerMotionMask,
+        );
         // Create atoms.
         let atoms = Atom::new(&xlib, display);
         // Create cursors.
@@ -71,8 +71,8 @@ impl<'a> Backend<'a> {
             xinerama_xlib,
             display,
             root,
-            start: unsafe { mem::zeroed() },
-            attrs: unsafe { mem::zeroed() },
+            start: mem::zeroed(),
+            attrs: mem::zeroed(),
             previous_mouse_position: (0, 0),
             atoms,
             cursor,
@@ -80,7 +80,7 @@ impl<'a> Backend<'a> {
             clients: Vec::new(),
             // current_client as None means that no client is focused.
             current_client: None,
-            monitors: MonitorManager::new(),
+            monitors: Vec::new(),
             layouts: config::get_layouts(),
             current_monitor: 0,
         })
@@ -521,7 +521,7 @@ impl<'a> Backend<'a> {
 
     fn arrange(&mut self, monitor: usize, workspace: usize) {
         let layout = self.monitors[monitor].get_layout();
-        for (index, geometry) in layout(
+        for (index, geometry) in (layout.func)(
             monitor,
             workspace,
             self.monitors[monitor].get_geometry(),
@@ -821,7 +821,7 @@ impl<'a> Backend<'a> {
             unsafe { slice::from_raw_parts(raw_infos, screen_count as usize) };
         self.monitors = xinerama_infos
             .iter()
-            .map(|info| Monitor::new(&self.layouts[0].1, &info))
+            .map(|info| Monitor::new(&self.layouts[0], &info))
             .collect();
         Ok(())
     }
@@ -851,8 +851,11 @@ impl<'a> Backend<'a> {
         exists
     }
 
-    pub extern "C" fn xerror(_: *mut xlib::Display, e: *mut xlib::XErrorEvent) -> i32 {
-        let err = unsafe { *e };
+    /// # Safety
+    ///
+    /// This function should not be called if error is uninitialized.
+    pub unsafe extern "C" fn xerror(_: *mut xlib::Display, e: *mut xlib::XErrorEvent) -> i32 {
+        let err = *e;
         // Ignore BadWindow error code.
         if err.error_code == xlib::BadWindow {
             0
