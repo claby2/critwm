@@ -351,15 +351,15 @@ impl<'a> Backend<'a> {
                 if attrs.override_redirect == 0
                     && !self.clients.iter().any(|client| client.window == window)
                 {
-                    unsafe {
-                        (self.xlib.XMapWindow)(self.display, window);
-                    }
                     self.add_window(window);
                     self.arrange(
                         self.current_monitor,
                         self.monitors[self.current_monitor].get_current_workspace(),
                     );
                     self.set_focus(Some(self.clients.len() - 1));
+                    unsafe {
+                        (self.xlib.XMapWindow)(self.display, window);
+                    }
                 }
             }
             xlib::UnmapNotify => {
@@ -525,6 +525,7 @@ impl<'a> Backend<'a> {
             workspace,
             self.monitors[monitor].get_geometry(),
             &self.clients,
+            self.monitors[monitor].get_bar_status(),
         )
         .iter()
         .enumerate()

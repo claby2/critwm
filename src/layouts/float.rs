@@ -3,7 +3,7 @@ use crate::{
         client::{Client, WindowGeometry},
         monitor::MonitorGeometry,
     },
-    layouts,
+    layouts::{self, BarStatus},
 };
 
 pub fn float(
@@ -11,6 +11,7 @@ pub fn float(
     workspace: usize,
     monitor_geometry: &MonitorGeometry,
     clients: &[Client],
+    _bar_status: &BarStatus,
 ) -> Vec<WindowGeometry> {
     clients
         .iter()

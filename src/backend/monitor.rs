@@ -1,7 +1,7 @@
 use crate::{
     backend::client::WindowGeometry,
     error::{CritError, CritResult},
-    layouts::Layout,
+    layouts::{BarStatus, Layout},
 };
 use serde::Serialize;
 use std::fmt;
@@ -42,6 +42,7 @@ pub struct Monitor<const WORKSPACES: usize> {
     current_workspace: usize,
     geometry: MonitorGeometry,
     layout: Layout,
+    bar_status: BarStatus,
 }
 
 impl<const WORKSPACES: usize> fmt::Debug for Monitor<WORKSPACES> {
@@ -62,6 +63,7 @@ impl<const WORKSPACES: usize> Monitor<WORKSPACES> {
                 info.height as i32,
             ),
             layout: layout.clone(),
+            bar_status: BarStatus::default(),
         }
     }
 
@@ -107,5 +109,16 @@ impl<const WORKSPACES: usize> Monitor<WORKSPACES> {
 
     pub fn get_height(&self) -> i32 {
         self.geometry.height
+    }
+
+    pub fn get_bar_status(&self) -> &BarStatus {
+        &self.bar_status
+    }
+
+    pub fn toggle_bar_status(&mut self) {
+        self.bar_status = match self.bar_status {
+            BarStatus::Show => BarStatus::Hide,
+            BarStatus::Hide => BarStatus::Show,
+        }
     }
 }

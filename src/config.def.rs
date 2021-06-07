@@ -11,6 +11,7 @@ pub const WORKSPACE_COUNT: usize = 9;
 const TAG_KEYS: [u32; WORKSPACE_COUNT] = [XK_1, XK_2, XK_3, XK_4, XK_5, XK_6, XK_7, XK_8, XK_9];
 
 pub const GAP: i32 = 15;
+pub const BAR_MARGIN: i32 = 24;
 pub const BORDER: i32 = 1;
 pub const BORDER_FOCUSED_COLOR: u64 = 0xbbbbbb;
 pub const BORDER_NORMAL_COLOR: u64 = 0x222222;
@@ -28,6 +29,7 @@ pub fn get_keymap() -> HashMap<Key, Action> {
         key!(MODKEY, XK_k, util::signal(Signal::FocusStack(Dir::Up))),
         key!(MODKEY, XK_w, util::signal(Signal::KillClient)),
         key!(MODKEY, XK_s, util::signal(Signal::ToggleFloating)),
+        key!(MODKEY, XK_b, util::signal(Signal::ToggleBar)),
         key!(MODKEY, XK_t, util::signal(Signal::SetLayout(0))),
         key!(MODKEY, XK_f, util::signal(Signal::SetLayout(1))),
         key!(MODKEY, XK_comma, util::signal(Signal::FocusMon(Dir::Down))),

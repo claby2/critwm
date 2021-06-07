@@ -3,7 +3,8 @@ use crate::{
         client::{Client, WindowGeometry},
         monitor::MonitorGeometry,
     },
-    config, layouts,
+    config,
+    layouts::{self, BarStatus},
 };
 
 pub fn tile(
@@ -11,6 +12,7 @@ pub fn tile(
     workspace: usize,
     monitor_geometry: &MonitorGeometry,
     clients: &[Client],
+    bar_status: &BarStatus,
 ) -> Vec<WindowGeometry> {
     let mut stack_indices = Vec::new();
     for (index, _) in clients
@@ -26,12 +28,13 @@ pub fn tile(
         .cloned()
         .collect::<Vec<WindowGeometry>>();
     if !stack_indices.is_empty() {
+        let bar_margin = layouts::get_bar_margin(bar_status);
         const DOUBLE_GAP: i32 = config::GAP * 2;
         let (x, y, width, height) = (
             monitor_geometry.x,
-            monitor_geometry.y,
+            monitor_geometry.y + bar_margin,
             monitor_geometry.width,
-            monitor_geometry.height,
+            monitor_geometry.height - bar_margin,
         );
         // The main window is the window that was added last.
         let main = stack_indices[stack_indices.len() - 1];
@@ -72,6 +75,7 @@ mod tests {
             monitor::MonitorGeometry,
         },
         config,
+        layouts::BarStatus,
     };
 
     #[test]
@@ -85,7 +89,13 @@ mod tests {
             workspace,
         )];
         assert_eq!(
-            tile(monitor_index, workspace, &monitor_geometry, &clients),
+            tile(
+                monitor_index,
+                workspace,
+                &monitor_geometry,
+                &clients,
+                &BarStatus::Hide
+            ),
             vec![WindowGeometry::new(
                 config::GAP,
                 config::GAP,
@@ -103,7 +113,13 @@ mod tests {
         let monitor_geometry = MonitorGeometry::new(0, 0, 1920, 1080);
         let clients = [Client::new(WindowGeometry::default(), monitor_index, workspace).floating()];
         assert_eq!(
-            tile(monitor_index, workspace, &monitor_geometry, &clients),
+            tile(
+                monitor_index,
+                workspace,
+                &monitor_geometry,
+                &clients,
+                &BarStatus::Hide
+            ),
             vec![WindowGeometry::default()]
         );
     }
@@ -116,7 +132,13 @@ mod tests {
         let clients =
             [Client::new(WindowGeometry::default(), monitor_index, workspace).fullscreen()];
         assert_eq!(
-            tile(monitor_index, workspace, &monitor_geometry, &clients),
+            tile(
+                monitor_index,
+                workspace,
+                &monitor_geometry,
+                &clients,
+                &BarStatus::Hide
+            ),
             vec![WindowGeometry::default()]
         );
     }
@@ -134,7 +156,13 @@ mod tests {
         let window_width = (monitor_geometry.width - (3 * config::GAP)) / 2;
         let stack_height = (monitor_geometry.height - (3 * config::GAP)) / 2;
         assert_eq!(
-            tile(monitor_index, workspace, &monitor_geometry, &clients),
+            tile(
+                monitor_index,
+                workspace,
+                &monitor_geometry,
+                &clients,
+                &BarStatus::Hide
+            ),
             vec![
                 WindowGeometry::new(
                     (monitor_geometry.width / 2) + (config::GAP / 2),

@@ -14,6 +14,7 @@ pub enum Signal {
     Quit,
     KillClient,
     ToggleFloating,
+    ToggleBar,
     SetLayout(usize),
     ChangeWorkspace(usize),
     MoveToWorkspace(usize),
@@ -37,6 +38,7 @@ impl Backend<'_> {
                         self.toggle_floating(current_client);
                     }
                 }
+                Signal::ToggleBar => self.toggle_bar(),
                 Signal::SetLayout(layout_index) => self.set_layout(layout_index),
                 Signal::ChangeWorkspace(new_workspace) => self.change_workspace(new_workspace)?,
                 Signal::MoveToWorkspace(new_workspace) => self.move_to_workspace(new_workspace),
@@ -67,17 +69,19 @@ impl Backend<'_> {
     pub fn kill_client(&self) {
         if let Some(current_client) = self.current_client {
             if let Some(client) = self.clients.get(current_client) {
-                // Try kill the client nicely.
-                if !self.send_xevent_atom(client.window, self.atoms.wm_delete) {
-                    // Force kill the client.
-                    unsafe {
-                        (self.xlib.XGrabServer)(self.display);
-                        (self.xlib.XSetErrorHandler)(Some(Self::xerror_dummy));
-                        (self.xlib.XSetCloseDownMode)(self.display, xlib::DestroyAll);
-                        (self.xlib.XKillClient)(self.display, client.window);
-                        (self.xlib.XSync)(self.display, xlib::False);
-                        (self.xlib.XSetErrorHandler)(Some(Self::xerror));
-                        (self.xlib.XUngrabServer)(self.display);
+                if !client.dock {
+                    // Try kill the client nicely.
+                    if !self.send_xevent_atom(client.window, self.atoms.wm_delete) {
+                        // Force kill the client.
+                        unsafe {
+                            (self.xlib.XGrabServer)(self.display);
+                            (self.xlib.XSetErrorHandler)(Some(Self::xerror_dummy));
+                            (self.xlib.XSetCloseDownMode)(self.display, xlib::DestroyAll);
+                            (self.xlib.XKillClient)(self.display, client.window);
+                            (self.xlib.XSync)(self.display, xlib::False);
+                            (self.xlib.XSetErrorHandler)(Some(Self::xerror));
+                            (self.xlib.XUngrabServer)(self.display);
+                        }
                     }
                 }
             }
@@ -91,6 +95,14 @@ impl Backend<'_> {
             self.current_monitor,
             self.monitors[self.current_monitor].get_current_workspace(),
         );
+    }
+
+    pub fn toggle_bar(&mut self) {
+        let monitor = &mut self.monitors[self.current_monitor];
+        monitor.toggle_bar_status();
+        for workspace in 0..config::WORKSPACE_COUNT {
+            self.arrange(self.current_monitor, workspace);
+        }
     }
 
     pub fn set_layout(&mut self, layout_index: usize) {

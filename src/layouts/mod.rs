@@ -1,22 +1,58 @@
 pub mod float;
 pub mod tile;
 
-use crate::backend::{
-    client::{Client, WindowGeometry},
-    monitor::MonitorGeometry,
+use crate::{
+    backend::{
+        client::{Client, WindowGeometry},
+        monitor::MonitorGeometry,
+    },
+    config,
 };
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use std::fmt;
+
+#[derive(Debug)]
+pub enum BarStatus {
+    Show,
+    Hide,
+}
+
+impl Serialize for BarStatus {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_bool(match self {
+            Self::Show => true,
+            Self::Hide => false,
+        })
+    }
+}
+
+impl Default for BarStatus {
+    fn default() -> Self {
+        Self::Show
+    }
+}
 
 fn is_arrangeable(client: &Client, monitor_index: usize, workspace: usize) -> bool {
     // Layouts should only modify the geometry of clients that are arrangeable.
     !client.fullscreen
         && !client.floating
+        && !client.dock
         && client.monitor == monitor_index
         && client.workspace == workspace
 }
 
-pub type LayoutFunc = fn(usize, usize, &MonitorGeometry, &[Client]) -> Vec<WindowGeometry>;
+fn get_bar_margin(bar_status: &BarStatus) -> i32 {
+    match bar_status {
+        BarStatus::Show => config::BAR_MARGIN,
+        BarStatus::Hide => 0,
+    }
+}
+
+pub type LayoutFunc =
+    fn(usize, usize, &MonitorGeometry, &[Client], &BarStatus) -> Vec<WindowGeometry>;
 
 #[derive(Serialize, Clone)]
 pub struct Layout {

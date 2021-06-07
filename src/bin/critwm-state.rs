@@ -38,6 +38,11 @@ async fn start(matches: ArgMatches<'_>) -> CritResult<()> {
                             .as_str()
                             .unwrap()
                     );
+                } else if matches.is_present("bar") {
+                    println!(
+                        "{}",
+                        value["monitors"].as_array().unwrap()[monitor]["bar_status"]
+                    );
                 }
             } else {
                 unreachable!();
@@ -55,11 +60,6 @@ async fn start(matches: ArgMatches<'_>) -> CritResult<()> {
                 println!("{}", value["monitors"]);
             } else if matches.is_present("layouts") {
                 println!("{}", value["layouts"]);
-                // value["layouts"]
-                // .as_array()
-                // .unwrap()
-                // .iter()
-                // .for_each(|layout| println!("{}", layout["symbol"].as_str().unwrap()));
             }
         }
     }
@@ -103,10 +103,17 @@ async fn main() {
                         .long("layout")
                         .help("Query symbol of current layout of monitor"),
                 )
+                .arg(
+                    Arg::with_name("bar")
+                        .short("b")
+                        .long("bar")
+                        .help("Query visibility of bar of monitor"),
+                )
                 .group(ArgGroup::with_name("query").required(true).args(&[
                     "workspace",
                     "geometry",
                     "layout",
+                    "bar",
                 ])),
         )
         .subcommand(
