@@ -139,6 +139,7 @@ impl Backend<'_> {
                 });
             // Update workspace value to new value.
             self.monitors[self.current_monitor].set_current_workspace(new_workspace)?;
+            self.focus_current_monitor();
         }
         Ok(())
     }
