@@ -11,6 +11,7 @@ pub struct Api<'a> {
     clients: &'a Vec<Client>,
     layouts: &'a Vec<Layout>,
     monitors: &'a Vec<Monitor<{ config::WORKSPACE_COUNT }>>,
+    workspaces: &'a [&'a str; config::WORKSPACE_COUNT],
     current_client: &'a Option<usize>,
     current_monitor: usize,
 }
@@ -21,6 +22,7 @@ impl<'a> From<&'a Backend<'a>> for Api<'a> {
             clients: &backend.clients,
             layouts: &backend.layouts,
             monitors: &backend.monitors,
+            workspaces: &config::WORKSPACES,
             current_client: &backend.current_client,
             current_monitor: backend.current_monitor,
         }

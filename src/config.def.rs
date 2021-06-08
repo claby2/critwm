@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use x11_dl::{keysym::*, xlib::*};
 
 pub const WORKSPACE_COUNT: usize = 9;
-// pub const WORKSPACES: [&str; WORKSPACE_COUNT] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+pub const WORKSPACES: [&str; WORKSPACE_COUNT] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 const TAG_KEYS: [u32; WORKSPACE_COUNT] = [XK_1, XK_2, XK_3, XK_4, XK_5, XK_6, XK_7, XK_8, XK_9];
 
 pub const GAP: i32 = 15;
