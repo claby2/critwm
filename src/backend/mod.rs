@@ -356,10 +356,17 @@ impl<'a> Backend<'a> {
                         self.current_monitor,
                         self.monitors[self.current_monitor].get_current_workspace(),
                     );
+                    let index = self.clients.len() - 1;
                     self.set_focus(Some(self.clients.len() - 1));
                     unsafe {
                         (self.xlib.XMapWindow)(self.display, window);
                     }
+                    let window_geometry = self.clients[index].get_geometry();
+                    self.cursor_warp(
+                        &window,
+                        window_geometry.width / 2,
+                        window_geometry.height / 2,
+                    );
                 }
             }
             xlib::UnmapNotify => {
@@ -813,6 +820,12 @@ impl<'a> Backend<'a> {
                 self.current_monitor,
                 self.monitors[self.current_monitor].get_current_workspace(),
             );
+        }
+    }
+
+    fn cursor_warp(&self, window: &xlib::Window, x: i32, y: i32) {
+        if config::CURSOR_WARP {
+            unsafe { (self.xlib.XWarpPointer)(self.display, 0, *window, 0, 0, 0, 0, x, y) };
         }
     }
 
