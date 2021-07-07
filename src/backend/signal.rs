@@ -195,7 +195,12 @@ impl Backend<'_> {
         };
         self.focus_current_monitor();
         if let Some(current_client) = self.current_client {
-            self.set_focus_and_warp(current_client);
+            let geometry = self.clients[current_client].get_geometry();
+            self.cursor_warp(
+                &self.clients[current_client].window,
+                geometry.width / 2,
+                geometry.height / 2,
+            );
         } else {
             let monitor_geometry = self.monitors[self.current_monitor].get_geometry();
             self.cursor_warp(

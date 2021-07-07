@@ -849,12 +849,15 @@ impl<'a> Backend<'a> {
 
     fn set_focus_and_warp(&mut self, index: usize) {
         self.set_focus(Some(index));
-        let geometry = self.clients[index].get_geometry();
-        self.cursor_warp(
-            &self.clients[index].window,
-            geometry.width / 2,
-            geometry.height / 2,
-        );
+        if let Some(index) = self.current_client {
+            // set_focus was successful, warp to window location.
+            let geometry = self.clients[index].get_geometry();
+            self.cursor_warp(
+                &self.clients[index].window,
+                geometry.width / 2,
+                geometry.height / 2,
+            );
+        }
     }
 
     fn cursor_warp(&self, window: &xlib::Window, x: i32, y: i32) {
@@ -865,13 +868,7 @@ impl<'a> Backend<'a> {
 
     fn focus_current_monitor(&mut self) {
         let workspace = self.monitors[self.current_monitor].get_current_workspace();
-        if let Some(client) =
-            self.monitors[self.current_monitor].get_last_selected_client(workspace)
-        {
-            self.set_focus_and_warp(client);
-        } else {
-            self.set_focus(None);
-        }
+        self.set_focus(self.monitors[self.current_monitor].get_last_selected_client(workspace));
     }
 
     fn fetch_monitors(&mut self) -> CritResult<()> {
