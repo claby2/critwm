@@ -35,6 +35,12 @@ impl StateSocket {
     }
 
     pub async fn listen(&mut self) -> CritResult<()> {
+        if self.socket_path.exists() {
+            // If the program does not close properly, i.e. StateSocket::close is not run, the
+            // socket_path may still exist. Preemptively delete it to avoid "Address is already in
+            // use error."
+            fs::remove_file(&self.socket_path).await.ok();
+        }
         let state = self.state.clone();
         let listener = UnixListener::bind(&self.socket_path)?;
         self.listener = Some(tokio::spawn(async move {
