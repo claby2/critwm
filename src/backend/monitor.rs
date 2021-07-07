@@ -43,6 +43,9 @@ pub struct Monitor<const WORKSPACES: usize> {
     geometry: MonitorGeometry,
     layout: Layout,
     bar_status: BarStatus,
+    // TODO: Serialize if possible.
+    #[serde(skip_serializing)]
+    last_selected_client: [Option<usize>; WORKSPACES],
 }
 
 impl<const WORKSPACES: usize> fmt::Debug for Monitor<WORKSPACES> {
@@ -64,6 +67,7 @@ impl<const WORKSPACES: usize> Monitor<WORKSPACES> {
             ),
             layout: layout.clone(),
             bar_status: BarStatus::default(),
+            last_selected_client: [None; WORKSPACES],
         }
     }
 
@@ -113,6 +117,14 @@ impl<const WORKSPACES: usize> Monitor<WORKSPACES> {
 
     pub fn get_bar_status(&self) -> &BarStatus {
         &self.bar_status
+    }
+
+    pub fn get_last_selected_client(&self, workspace: usize) -> Option<usize> {
+        self.last_selected_client[workspace]
+    }
+
+    pub fn set_last_selected_client(&mut self, workspace: usize, client: Option<usize>) {
+        self.last_selected_client[workspace] = client;
     }
 
     pub fn toggle_bar_status(&mut self) {

@@ -9,6 +9,15 @@ pub enum Dir {
     Down,
 }
 
+impl Dir {
+    fn opposite(&self) -> Self {
+        match self {
+            Self::Up => Self::Down,
+            Self::Down => Self::Up,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Signal {
     Quit,
@@ -20,6 +29,9 @@ pub enum Signal {
     MoveToWorkspace(usize),
     FocusMon(Dir),
     FocusStack(Dir),
+    // A combination of FocusStack and FocusMon. Only focuses another monitor if there is no other
+    // client to focus on the stack without looping.
+    FocusDir(Dir),
 }
 
 impl Backend<'_> {
@@ -44,6 +56,7 @@ impl Backend<'_> {
                 Signal::MoveToWorkspace(new_workspace) => self.move_to_workspace(new_workspace),
                 Signal::FocusMon(direction) => self.focus_monitor(direction),
                 Signal::FocusStack(direction) => self.focus_stack(direction),
+                Signal::FocusDir(direction) => self.focus_dir(direction),
             }
         }
         Ok(false)
@@ -182,12 +195,7 @@ impl Backend<'_> {
         };
         self.focus_current_monitor();
         if let Some(current_client) = self.current_client {
-            let window_geometry = self.clients[current_client].get_geometry();
-            self.cursor_warp(
-                &self.clients[current_client].window,
-                window_geometry.width / 2,
-                window_geometry.height / 2,
-            );
+            self.set_focus_and_warp(current_client);
         } else {
             let monitor_geometry = self.monitors[self.current_monitor].get_geometry();
             self.cursor_warp(
@@ -218,14 +226,35 @@ impl Backend<'_> {
                     .skip(self.clients.len() - current_client)
                     .find(|(_, client)| self.is_visible(workspace, client)),
             } {
-                self.set_focus(Some(index));
-                let geometry = self.clients[index].get_geometry();
-                self.cursor_warp(
-                    &self.clients[index].window,
-                    geometry.width / 2,
-                    geometry.height / 2,
-                );
+                self.set_focus_and_warp(index);
             };
+        }
+    }
+
+    pub fn focus_dir(&mut self, direction: Dir) {
+        if let Some(current_client) = self.current_client {
+            let workspace = self.monitors[self.current_monitor].get_current_workspace();
+            if let Some((index, _)) = match direction {
+                Dir::Up => self
+                    .clients
+                    .iter()
+                    .enumerate()
+                    .skip(current_client + 1)
+                    .find(|(_, client)| self.is_visible(workspace, client)),
+                Dir::Down => self
+                    .clients
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .skip(self.clients.len() - current_client)
+                    .find(|(_, client)| self.is_visible(workspace, client)),
+            } {
+                self.set_focus_and_warp(index);
+            } else {
+                self.focus_monitor(direction.opposite());
+            }
+        } else {
+            self.focus_monitor(direction.opposite());
         }
     }
 }
