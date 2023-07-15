@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate log;
 
-use clap::{App, Arg, ArgMatches};
+use clap::Parser;
 use critwm::{error::CritResult, socket::SOCKET_PATH};
 use serde_json::Value;
 use std::{path::PathBuf, process};
@@ -10,23 +10,19 @@ use tokio::{
     net::UnixStream,
 };
 
-async fn start(matches: ArgMatches<'_>) -> CritResult<()> {
+async fn start(args: Args) -> CritResult<()> {
     let stream = UnixStream::connect(PathBuf::from(SOCKET_PATH)).await?;
     let mut reader = BufReader::new(stream).lines();
 
-    let tail = matches.is_present("tail");
-    let monitor = matches
-        .value_of("monitor")
-        .map(|monitor_index| monitor_index.parse::<usize>().unwrap());
+    let tail = args.tail;
+    let monitor = args.monitor;
     while let Some(line) = reader.next_line().await? {
         let value: Value = serde_json::from_str(&line)?;
-        println!(
-            "{}",
-            match monitor {
-                Some(monitor_index) => &value["monitors"][monitor_index],
-                None => &value,
-            }
-        );
+        let state = match monitor {
+            Some(monitor_index) => &value["monitors"][monitor_index],
+            None => &value,
+        };
+        println!("{state}");
         if !tail {
             break;
         }
@@ -34,26 +30,23 @@ async fn start(matches: ArgMatches<'_>) -> CritResult<()> {
     Ok(())
 }
 
+/// Query the state of critwm
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Specify which monitor to query
+    #[arg(short, long)]
+    monitor: Option<usize>,
+
+    ///Continuously output
+    #[arg(short, long)]
+    tail: bool,
+}
+
 #[tokio::main]
 async fn main() {
-    let matches = App::new("critwm-state")
-        .about("Query the state of critwm.")
-        .arg(
-            Arg::with_name("monitor")
-                .value_name("MONITOR INDEX")
-                .takes_value(true)
-                .short("m")
-                .long("monitor")
-                .help("Specify which monitor to query"),
-        )
-        .arg(
-            Arg::with_name("tail")
-                .short("t")
-                .long("tail")
-                .help("Continously output"),
-        )
-        .get_matches();
-    match start(matches).await {
+    let args = Args::parse();
+    match start(args).await {
         Ok(_) => {
             process::exit(0);
         }
