@@ -40,7 +40,7 @@ async fn run(backend: &mut Backend<'_>) -> CritResult<()> {
         }
         backend.handle_cursor();
         backend.handle_event()?;
-        state_socket.write(&backend).await?;
+        state_socket.write(backend).await?;
     }
     state_socket.close().await?;
     Ok(())

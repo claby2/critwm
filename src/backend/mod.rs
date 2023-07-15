@@ -55,7 +55,7 @@ impl<'a> Backend<'a> {
             xlib::SubstructureRedirectMask | xlib::StructureNotifyMask | xlib::PointerMotionMask,
         );
         // Create atoms.
-        let atoms = Atom::new(&xlib, display);
+        let atoms = Atom::new(xlib, display);
         // Create cursors.
         let create_cursor = |shape: XCursorShape| -> XCursor {
             unsafe { (xlib.XCreateFontCursor)(display, shape) }
@@ -286,9 +286,9 @@ impl<'a> Backend<'a> {
                             window: request.window,
                             x: geometry.x,
                             y: geometry.y,
-                            width: geometry.width as i32,
-                            height: geometry.height as i32,
-                            border_width: geometry.border_width as i32,
+                            width: geometry.width,
+                            height: geometry.height,
+                            border_width: geometry.border_width,
                             above: 0,
                             override_redirect: 0,
                         });
@@ -526,7 +526,7 @@ impl<'a> Backend<'a> {
         };
         let workspace = self.monitors[self.current_monitor].get_current_workspace();
         self.clients.push(Client::fetch(
-            &self.xlib,
+            self.xlib,
             self.display,
             window,
             self.current_monitor,
@@ -734,12 +734,12 @@ impl<'a> Backend<'a> {
     fn set_client_monitor(&mut self, index: usize) {
         // Ensure that the client's monitor is correct.
         let client = &mut self.clients[index];
-        client.update_geometry(&self.xlib, self.display);
+        client.update_geometry(self.xlib, self.display);
         let geometry = client.get_geometry();
         if let Some(monitor_index) = self
             .monitors
             .iter()
-            .position(|monitor| monitor.get_geometry().has_window(&geometry))
+            .position(|monitor| monitor.get_geometry().has_window(geometry))
         {
             if client.monitor != monitor_index {
                 client.monitor = monitor_index;
@@ -879,7 +879,7 @@ impl<'a> Backend<'a> {
             unsafe { slice::from_raw_parts(raw_infos, screen_count as usize) };
         self.monitors = xinerama_infos
             .iter()
-            .map(|info| Monitor::new(&self.layouts[0], &info))
+            .map(|info| Monitor::new(&self.layouts[0], info))
             .collect();
         Ok(())
     }
